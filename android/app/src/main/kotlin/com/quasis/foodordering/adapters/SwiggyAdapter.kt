@@ -70,7 +70,7 @@ class SwiggyAdapter(
         val editableSearch = NodeHierarchyScanner.findNodesByText(activeRoot, "search")
             .firstOrNull { it.isEditable } ?: searchBar
 
-        val textSet = GestureDispatcher.setText(editableSearch, query)
+        val textSet = GestureDispatcher.setText(service, editableSearch, query)
         if (!textSet) {
             Log.e(TAG, "Failed to enter search query '$query' in search bar.")
             return false
@@ -139,7 +139,7 @@ class SwiggyAdapter(
             val activeRoot = getRootNode()
             val editable = NodeHierarchyScanner.findNodesByText(activeRoot, "search")
                 .firstOrNull { it.isEditable } ?: inMenuSearch
-            GestureDispatcher.setText(editable, itemName)
+            GestureDispatcher.setText(service, editable, itemName)
             delay(500L)
             return true
         }
