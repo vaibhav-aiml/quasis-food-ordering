@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Quasis Food Ordering</string>
+    <string name="accessibility_service_label">Quasis Food Ordering Assistant</string>
+    <string name="accessibility_service_description">Automates food ordering workflows on Swiggy and food delivery apps up to payment screen with human-in-the-loop safety verification.</string>
+</resources>

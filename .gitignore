@@ -34,3 +34,10 @@ mobile/.dart_tool/
 mobile/.flutter-plugins
 mobile/.flutter-plugins-dependencies
 mobile/build/
+
+# --- Android / Gradle ---
+.gradle/
+**/build/
+*.iml
+local.properties
+
