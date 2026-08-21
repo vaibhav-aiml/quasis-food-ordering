@@ -278,6 +278,36 @@ def get_food_planner_agent():
     return FoodPlannerAgent(get_food_intent_agent(), get_food_plan_builder())
 
 
+
+# --------------------------------------------------------------------------
+# Food Ordering Service Dependencies
+# --------------------------------------------------------------------------
+
+
+@lru_cache
+def get_execution_service():
+    """Dependency providing the Food Ordering Execution Service."""
+    from app.food_ordering.services.execution_service import ExecutionService
+
+    return ExecutionService()
+
+
+@lru_cache
+def get_restaurant_service():
+    """Dependency providing the Food Ordering Restaurant Service."""
+    from app.food_ordering.services.restaurant_service import RestaurantService
+
+    return RestaurantService()
+
+
+@lru_cache
+def get_order_service():
+    """Dependency providing the Food Ordering Order Service."""
+    from app.food_ordering.services.order_service import OrderService
+
+    return OrderService()
+
+
 __all__ = [
     "get_settings",
     "Settings",
@@ -300,4 +330,8 @@ __all__ = [
     "get_food_intent_agent",
     "get_food_plan_builder",
     "get_food_planner_agent",
+    "get_execution_service",
+    "get_restaurant_service",
+    "get_order_service",
 ]
+

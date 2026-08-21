@@ -14,6 +14,7 @@ class ExecutionStatus(str, Enum):
     PAUSED_FOR_CLARIFICATION = "paused_for_clarification"
     READY_FOR_PAYMENT = "ready_for_payment"
     FAILED = "failed"
+    COMPLETED = "completed"
     CANCELLED = "cancelled"
 
 

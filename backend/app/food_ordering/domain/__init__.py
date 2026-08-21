@@ -11,6 +11,10 @@ from app.food_ordering.domain.intent import (
     FoodOrderIntent,
     MealType,
 )
+from app.food_ordering.domain.order import (
+    OrderRecord,
+    OrderStatus,
+)
 from app.food_ordering.domain.plan import (
     ExecutionStepType,
     OrderPlan,
@@ -35,6 +39,8 @@ __all__ = [
     "MealType",
     "MenuItem",
     "OrderPlan",
+    "OrderRecord",
+    "OrderStatus",
     "OrderStep",
     "Restaurant",
     "StepExecutionResult",
