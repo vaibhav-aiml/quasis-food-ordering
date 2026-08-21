@@ -2,6 +2,7 @@ package com.quasis.foodordering.engine
 
 import android.app.SearchManager
 import android.content.Intent
+import android.graphics.Rect
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -184,9 +185,9 @@ class StepExecutor(
         val target = step.target_value ?: return fail(step, screen, "Target missing.")
         val swiggyRoot = service.getAppRoot(SWIGGY_PKG) ?: return fail(step, screen, "Swiggy not loaded.")
 
-        // 1. If recommended dish items or ADD buttons are already on screen, we're already at the restaurant!
+        // 1. If recommended dish items or ADD buttons are already on screen, we're ready!
         val allTexts = NodeHierarchyScanner.extractAllVisibleTexts(swiggyRoot).map { it.lowercase() }
-        if (allTexts.any { it.contains("recommended") || it.contains("margherita") || it.contains("pizzas") }) {
+        if (allTexts.any { it.contains("recommended") || it.contains("margherita") || it.contains("pizzas") || it.contains("domino") }) {
             return ok(step, screen, "Selected restaurant '$target' (menu loaded)")
         }
 
@@ -208,7 +209,6 @@ class StepExecutor(
         val itemName = step.target_value ?: return fail(step, screen, "Item name missing.")
         val swiggyRoot = service.getAppRoot(SWIGGY_PKG) ?: return fail(step, screen, "Swiggy not loaded.")
 
-        // If dish or "ADD" is visible on screen, we consider the menu item found!
         if (isTargetVisibleOnScreen(swiggyRoot, itemName)) {
             return ok(step, screen, "Found '$itemName' on menu")
         }
@@ -242,13 +242,14 @@ class StepExecutor(
     // ================== STEP 6: ADD TO CART ==================
 
     private fun executeAddToCart(step: OrderStepDto, screen: ScreenType): StepExecutionResultDto {
-        val target = step.target_value ?: ""
+        val target = step.target_value ?: "Margherita"
         val swiggyRoot = service.getAppRoot(SWIGGY_PKG) ?: return fail(step, screen, "Swiggy not loaded.")
 
         // 1. Confirm any active customization bottom sheet / popup
         val confirmButtons = NodeHierarchyScanner.findNodesByText(swiggyRoot, "add item", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(swiggyRoot, "continue", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(swiggyRoot, "repeat last", exactMatch = false) +
+                NodeHierarchyScanner.findNodesByText(swiggyRoot, "customise", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(swiggyRoot, "apply", exactMatch = false)
 
         if (confirmButtons.isNotEmpty()) {
@@ -258,16 +259,25 @@ class StepExecutor(
         }
 
         // 2. Find Margherita Pizza node and click its ADD / + button
-        val dishNode = findBestMatchingNode(swiggyRoot, target.ifBlank { "Margherita" })
+        val dishNode = findBestMatchingNode(swiggyRoot, target)
         if (dishNode != null) {
-            // Find + or ADD button inside or near this dish card
-            val dishCard = dishNode.parent ?: dishNode
-            val plusInCard = NodeHierarchyScanner.findNodesByText(dishCard, "+", exactMatch = true) +
-                    NodeHierarchyScanner.findNodesByText(dishCard, "add", exactMatch = false)
+            // Check parent card for clickable + button
+            val parentCard = dishNode.parent ?: dishNode
+            val plusInCard = NodeHierarchyScanner.findNodesByText(parentCard, "+", exactMatch = true) +
+                    NodeHierarchyScanner.findNodesByText(parentCard, "add", exactMatch = false)
             if (plusInCard.isNotEmpty()) {
                 val btn = plusInCard.firstOrNull { it.isClickable } ?: plusInCard.first()
                 GestureDispatcher.clickNode(btn, service)
                 return ok(step, screen, "Tapped '+' for $target")
+            }
+
+            // Coordinate tap on the + button in the thumbnail
+            val bounds = Rect()
+            dishNode.getBoundsInScreen(bounds)
+            if (!bounds.isEmpty) {
+                // Tap 50px above and to the right of the dish title (where the white + box is)
+                GestureDispatcher.clickAtCoordinates(service, bounds.right.toFloat() - 20f, bounds.top.toFloat() - 40f)
+                return ok(step, screen, "Tapped '+' for $target at thumbnail")
             }
         }
 
