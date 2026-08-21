@@ -34,6 +34,9 @@ class FoodAccessibilityService : AccessibilityService() {
         OrderOrchestrator.onAccessibilityEventReceived(event, rootNode)
     }
 
+    /**
+     * Get root node, preferring the active window.
+     */
     fun getActiveRoot(): AccessibilityNodeInfo? {
         val root = rootInActiveWindow
         if (root != null) return root
@@ -44,6 +47,36 @@ class FoodAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             null
         }
+    }
+
+    /**
+     * Explicitly find a specific app's window root by package name.
+     * This is critical when our app fires an intent but the target app's
+     * window might not be the "active" one yet.
+     */
+    fun getAppRoot(packageName: String): AccessibilityNodeInfo? {
+        try {
+            val allWindows = windows ?: emptyList()
+            for (window in allWindows) {
+                val root = window.root ?: continue
+                val pkg = root.packageName?.toString() ?: continue
+                if (pkg == packageName) {
+                    Log.d(TAG, "Found window for $packageName (type=${window.type})")
+                    return root
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error querying windows for $packageName", e)
+        }
+
+        // Fallback to active root and check package
+        val activeRoot = getActiveRoot()
+        if (activeRoot?.packageName?.toString() == packageName) {
+            return activeRoot
+        }
+
+        Log.w(TAG, "Could not find window for $packageName. Active pkg=${activeRoot?.packageName}")
+        return activeRoot
     }
 
     override fun onInterrupt() {
