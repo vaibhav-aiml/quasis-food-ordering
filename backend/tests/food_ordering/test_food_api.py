@@ -73,6 +73,17 @@ def test_api_parse_food_intent(client: TestClient) -> None:
     assert data["needs_clarification"] is False
 
 
+def test_api_parse_food_intent_from_query_alias(client: TestClient) -> None:
+    response = client.post(
+        "/v1/food/intent/parse",
+        json={"query": "Order chicken biryani from Meghana Foods with extra raita"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["restaurant_name"] == "Meghana Foods"
+
+
+
 def test_api_create_food_order_plan_from_text(client: TestClient) -> None:
     response = client.post(
         "/v1/food/order/plan",
@@ -109,7 +120,20 @@ def test_api_create_food_order_plan_from_intent(client: TestClient) -> None:
     assert data["plan"]["restaurant_name"] == "Cafe Coffee Day"
 
 
+def test_api_create_food_order_plan_from_query_field(client: TestClient) -> None:
+    response = client.post(
+        "/v1/food/order/plan",
+        json={"query": "Order chicken biryani from Meghana Foods with extra raita"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ready_to_automate"] is True
+    assert data["plan"] is not None
+    assert data["plan"]["restaurant_name"] == "Meghana Foods"
+
+
 def test_api_create_food_order_plan_missing_payload_returns_400(client: TestClient) -> None:
     response = client.post("/v1/food/order/plan", json={})
     assert response.status_code == 400
-    assert "Either 'raw_text' or 'intent' must be provided" in response.json()["detail"]
+    assert "must be provided" in response.json()["detail"]
+

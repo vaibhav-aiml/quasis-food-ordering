@@ -21,10 +21,18 @@ class PlanCreateRequest(BaseModel):
         default=None,
         description="Raw user request string to parse and plan from.",
     )
+    query: str | None = Field(
+        default=None,
+        description="Alias for raw_text.",
+    )
     intent: FoodOrderIntent | None = Field(
         default=None,
         description="Pre-extracted FoodOrderIntent to build plan from directly.",
     )
+
+    def get_text(self) -> str | None:
+        text = self.raw_text or self.query
+        return text.strip() if text and text.strip() else None
 
 
 @router.post("/plan", response_model=FoodPlanResult, status_code=200)
@@ -36,10 +44,11 @@ def create_food_order_plan(
     if payload.intent is not None:
         return planner_agent.plan_from_intent(payload.intent)
 
-    if payload.raw_text and payload.raw_text.strip():
-        return planner_agent.plan_from_text(payload.raw_text)
+    text = payload.get_text()
+    if text:
+        return planner_agent.plan_from_text(text)
 
     raise HTTPException(
         status_code=400,
-        detail="Either 'raw_text' or 'intent' must be provided in request payload.",
+        detail="Either 'raw_text', 'query', or 'intent' must be provided in request payload.",
     )
