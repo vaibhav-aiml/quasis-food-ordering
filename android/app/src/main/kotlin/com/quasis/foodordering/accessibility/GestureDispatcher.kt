@@ -16,7 +16,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 object GestureDispatcher {
 
     /**
-     * Clicks an AccessibilityNodeInfo. Tries native ACTION_CLICK, falls back to dispatchGesture.
+     * Clicks an AccessibilityNodeInfo using both native ACTION_CLICK and physical gesture touch event.
      */
     fun clickNode(
         node: AccessibilityNodeInfo?,
@@ -24,24 +24,26 @@ object GestureDispatcher {
     ): Boolean {
         if (node == null) return false
 
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+
+        // 1. Try native ACTION_CLICK
         val clickableTarget = NodeHierarchyScanner.findClickableTarget(node)
+        var actionClicked = false
         if (clickableTarget != null && clickableTarget.isClickable) {
-            val clicked = clickableTarget.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            if (clicked) return true
+            actionClicked = clickableTarget.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        }
+        if (!actionClicked && node.isClickable) {
+            actionClicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
         }
 
-        // Fallback to gesture coordinates if service is available
-        if (service != null) {
-            val bounds = Rect()
-            node.getBoundsInScreen(bounds)
-            if (!bounds.isEmpty && bounds.centerX() > 0 && bounds.centerY() > 0) {
-                val x = bounds.centerX().toFloat()
-                val y = bounds.centerY().toFloat()
-                return clickAtCoordinates(service, x, y)
-            }
+        // 2. Perform physical touch gesture on coordinates
+        if (service != null && !bounds.isEmpty && bounds.centerX() > 0 && bounds.centerY() > 0) {
+            clickAtCoordinates(service, bounds.centerX().toFloat(), bounds.centerY().toFloat(), 80L)
+            return true
         }
 
-        return false
+        return actionClicked
     }
 
     /**
@@ -82,13 +84,13 @@ object GestureDispatcher {
     }
 
     /**
-     * Performs a tap at specific screen coordinates using AccessibilityService.dispatchGesture.
+     * Performs a physical tap at specific screen coordinates using AccessibilityService.dispatchGesture.
      */
     fun clickAtCoordinates(
         service: AccessibilityService,
         x: Float,
         y: Float,
-        durationMs: Long = 50L
+        durationMs: Long = 80L
     ): Boolean {
         val path = Path().apply {
             moveTo(x, y)

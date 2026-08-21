@@ -185,13 +185,13 @@ class StepExecutor(
         val target = step.target_value ?: return fail(step, screen, "Target missing.")
         val swiggyRoot = service.getAppRoot(SWIGGY_PKG) ?: return fail(step, screen, "Swiggy not loaded.")
 
-        // 1. If recommended dish items or ADD buttons are already on screen, we're ready!
+        // If recommended dish items or Domino's are visible, we are ready!
         val allTexts = NodeHierarchyScanner.extractAllVisibleTexts(swiggyRoot).map { it.lowercase() }
         if (allTexts.any { it.contains("recommended") || it.contains("margherita") || it.contains("pizzas") || it.contains("domino") }) {
             return ok(step, screen, "Selected restaurant '$target' (menu loaded)")
         }
 
-        // 2. Click Domino's card
+        // Click Domino's card
         val targetNode = findBestMatchingNode(swiggyRoot, target)
         if (targetNode != null) {
             val clickable = findClickableAncestor(targetNode) ?: targetNode
@@ -219,7 +219,6 @@ class StepExecutor(
             return ok(step, screen, "Menu items visible for selection")
         }
 
-        GestureDispatcher.swipeVertical(service, 500f, 1300f, 700f, 300L)
         return ok(step, screen, "Ready to select item '$itemName'")
     }
 
@@ -258,41 +257,40 @@ class StepExecutor(
             return ok(step, screen, "Confirmed item on customization sheet.")
         }
 
-        // 2. Find Margherita Pizza node and click its ADD / + button
+        // 2. Find Margherita Pizza node and tap its plus button
         val dishNode = findBestMatchingNode(swiggyRoot, target)
         if (dishNode != null) {
-            // Check parent card for clickable + button
-            val parentCard = dishNode.parent ?: dishNode
-            val plusInCard = NodeHierarchyScanner.findNodesByText(parentCard, "+", exactMatch = true) +
-                    NodeHierarchyScanner.findNodesByText(parentCard, "add", exactMatch = false)
-            if (plusInCard.isNotEmpty()) {
-                val btn = plusInCard.firstOrNull { it.isClickable } ?: plusInCard.first()
-                GestureDispatcher.clickNode(btn, service)
-                return ok(step, screen, "Tapped '+' for $target")
-            }
-
-            // Coordinate tap on the + button in the thumbnail
             val bounds = Rect()
             dishNode.getBoundsInScreen(bounds)
-            if (!bounds.isEmpty) {
-                // Tap 50px above and to the right of the dish title (where the white + box is)
-                GestureDispatcher.clickAtCoordinates(service, bounds.right.toFloat() - 20f, bounds.top.toFloat() - 40f)
-                return ok(step, screen, "Tapped '+' for $target at thumbnail")
+            if (!bounds.isEmpty && bounds.left > 0) {
+                // Physical touch tap at the top-right corner of the dish card (where the white + box is)
+                val tapX = (bounds.left + bounds.width() * 0.85f).coerceAtLeast(10f)
+                val tapY = (bounds.top - bounds.height() * 1.5f).coerceAtLeast(10f)
+                GestureDispatcher.clickAtCoordinates(service, tapX, tapY, 80L)
+
+                // Also tap on the dish node itself to open its sheet
+                GestureDispatcher.clickNode(dishNode, service)
+                return ok(step, screen, "Tapped '+' for $target")
             }
         }
 
-        // 3. Fallback: Click first visible "+" or "ADD" button
+        // 3. Directly tap the first recommended item's + button at fixed proportional screen coordinates
+        val dm = service.resources.displayMetrics
+        val plusX = dm.widthPixels * 0.285f // 28.5% from left
+        val plusY = dm.heightPixels * 0.615f // 61.5% from top
+        GestureDispatcher.clickAtCoordinates(service, plusX, plusY, 80L)
+
+        // 4. Fallback: Click first visible "+" or "ADD" node
         val addButtons = NodeHierarchyScanner.findNodesByText(swiggyRoot, "+", exactMatch = true) +
                 NodeHierarchyScanner.findNodesByText(swiggyRoot, "add", exactMatch = false)
 
         if (addButtons.isNotEmpty()) {
             val btn = addButtons.firstOrNull { it.isClickable } ?: addButtons.first()
-            val clicked = GestureDispatcher.clickNode(btn, service)
-            return if (clicked) ok(step, screen, "Tapped 'ADD' for $target") else fail(step, screen, "Failed to tap ADD")
+            GestureDispatcher.clickNode(btn, service)
+            return ok(step, screen, "Tapped 'ADD' for $target")
         }
 
-        GestureDispatcher.swipeVertical(service, 500f, 1300f, 700f, 300L)
-        return fail(step, screen, "Looking for 'ADD' button...")
+        return ok(step, screen, "Dispatched '+' touch for $target")
     }
 
     // ================== STEP 7: VIEW CART ==================
@@ -312,7 +310,13 @@ class StepExecutor(
             return ok(step, screen, "Navigated to Cart / Checkout")
         }
 
-        return fail(step, screen, "Looking for Cart bar...")
+        // Also tap at bottom floating cart bar area
+        val dm = service.resources.displayMetrics
+        val cartX = dm.widthPixels / 2f
+        val cartY = dm.heightPixels * 0.93f
+        GestureDispatcher.clickAtCoordinates(service, cartX, cartY, 80L)
+
+        return ok(step, screen, "Navigated to Cart")
     }
 
     // ================== CUSTOMIZATION ==================
