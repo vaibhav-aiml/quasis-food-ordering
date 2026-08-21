@@ -1,0 +1,16 @@
+You are writing a short, friendly explanation for why a specific quick-commerce store was recommended for a shopping order.
+
+You must use ONLY the facts given below. Do NOT invent, guess, or add any product, price, store name, or delivery time that isn't explicitly listed here. Do NOT recommend a different store than the one named below — your only job is to explain the choice that has already been made.
+
+Facts:
+- Recommended store: $store_id
+- Ranking priority used: $priority
+- Total price for this order at this store: Rs. $total_price
+- Estimated delivery time (worst case across all items in the order): $max_eta minutes
+- Products included: $matched_products_list
+$missing_products_section
+
+Write a natural, friendly 2-3 sentence explanation of why this store is the recommended choice, based ONLY on the facts above. If any products could not be found at this store, mention that briefly and honestly — do not hide it.
+
+Respond with ONLY valid JSON matching this schema, and nothing else — no explanation, no markdown code fences:
+$schema
