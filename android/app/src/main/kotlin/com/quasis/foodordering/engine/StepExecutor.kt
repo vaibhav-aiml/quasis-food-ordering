@@ -13,7 +13,7 @@ import com.quasis.foodordering.models.StepExecutionResultDto
 import com.quasis.foodordering.models.StepType
 
 /**
- * Executes a single atomic OrderStep against the current active window.
+ * Executes a single atomic OrderStep against the active window.
  */
 class StepExecutor(
     private val service: FoodAccessibilityService
@@ -21,7 +21,7 @@ class StepExecutor(
     fun execute(step: OrderStepDto, rootNode: AccessibilityNodeInfo?): StepExecutionResultDto {
         val currentScreen = ScreenStateDetector.detectScreen(rootNode)
 
-        // 1. Safety verification
+        // 1. Safety verification: never automate payment
         val safetyHaltReason = ExecutionSafetyGuard.validateStepSafety(step, currentScreen)
         if (safetyHaltReason != null) {
             return StepExecutionResultDto(
@@ -33,7 +33,7 @@ class StepExecutor(
             )
         }
 
-        // 2. Execute step according to step type
+        // 2. Dispatch to specific step action
         return when (step.step_type) {
             StepType.LAUNCH_APP -> executeLaunchApp(step)
             StepType.SEARCH_RESTAURANT -> executeSearch(step, rootNode, currentScreen)
@@ -50,9 +50,31 @@ class StepExecutor(
                     step_type = step.step_type,
                     success = true,
                     observed_screen = currentScreen.name,
-                    message = "Safety stop before payment reached successfully."
+                    message = "Safety stop before payment reached."
                 )
             }
+        }
+    }
+
+    /**
+     * Opens the search interface once before typing.
+     */
+    fun prepareSearchScreen() {
+        val rootNode = service.getActiveRoot()
+        val editableNodes = findEditableNodes(rootNode)
+        if (editableNodes.isNotEmpty()) return
+
+        try {
+            val searchIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("swiggy://search")).apply {
+                setPackage("in.swiggy.android")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            service.startActivity(searchIntent)
+        } catch (e: Exception) {
+            val displayMetrics = service.resources.displayMetrics
+            val centerX = displayMetrics.widthPixels / 2f
+            val searchBarY = displayMetrics.heightPixels * 0.16f
+            GestureDispatcher.clickAtCoordinates(service, centerX, searchBarY)
         }
     }
 
@@ -87,38 +109,11 @@ class StepExecutor(
             )
         }
 
-        val fallbackIntents = listOf(
-            Intent(Intent.ACTION_VIEW, android.net.Uri.parse("swiggy://explore")),
-            Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.swiggy.com/")).apply { setPackage(packageName) },
-            Intent(Intent.ACTION_MAIN).apply {
-                setClassName("in.swiggy.android", "in.swiggy.android.activities.HomeActivity")
-            },
-            Intent(Intent.ACTION_MAIN).apply {
-                setClassName("in.swiggy.android", "in.swiggy.android.activities.MainActivity")
-            }
-        )
-
-        for (cand in fallbackIntents) {
-            try {
-                cand.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                service.startActivity(cand)
-                return StepExecutionResultDto(
-                    step_id = step.step_id,
-                    step_type = step.step_type,
-                    success = true,
-                    message = "Launched package: $packageName"
-                )
-            } catch (e: Exception) {
-                // Try next
-            }
-        }
-
-        val appName = if (packageName.contains("swiggy")) "Swiggy" else "food ordering app"
         return StepExecutionResultDto(
             step_id = step.step_id,
             step_type = step.step_type,
             success = false,
-            message = "$appName is not installed or launch intent was blocked. (package: $packageName)"
+            message = "Could not launch $packageName"
         )
     }
 
@@ -127,16 +122,16 @@ class StepExecutor(
         rootNode: AccessibilityNodeInfo?,
         screen: ScreenType
     ): StepExecutionResultDto {
-        val query = step.target_value ?: return fail(step, screen, "Target value missing for search.")
+        val query = step.target_value ?: return fail(step, screen, "Search query missing.")
 
-        // 1. Check if an editable search field is active on screen
+        // 1. Locate editable search field
         val editableNodes = findEditableNodes(rootNode)
         if (editableNodes.isNotEmpty()) {
             val targetBox = editableNodes.first()
             GestureDispatcher.clickNode(targetBox, service)
             val textSet = GestureDispatcher.setText(targetBox, query)
             if (textSet) {
-                // Look for search suggestions matching query and tap if visible
+                // If auto-suggestions appear, tap the first matching suggestion
                 val suggestions = NodeHierarchyScanner.findNodesByText(rootNode, query, exactMatch = false)
                 val suggestionNode = suggestions.firstOrNull { it != targetBox && it.isClickable }
                 if (suggestionNode != null) {
@@ -147,40 +142,22 @@ class StepExecutor(
                     step_type = step.step_type,
                     success = true,
                     observed_screen = screen.name,
-                    message = "Entered search query: '$query'"
+                    message = "Searched for '$query'"
                 )
             }
         }
 
-        // 2. Open search screen via deep link if not yet on search page
-        try {
-            val searchIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("swiggy://search")).apply {
-                setPackage("in.swiggy.android")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            service.startActivity(searchIntent)
-        } catch (e: Exception) {
-            // fallback to clicking search icon/bar below
-        }
-
-        // 3. Look for search triggers in UI
+        // 2. If not on search input yet, click search trigger
         val searchTriggers = NodeHierarchyScanner.findNodesByText(rootNode, "search", exactMatch = false) +
-                NodeHierarchyScanner.findNodesByText(rootNode, "search for", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(rootNode, "dishes", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(rootNode, "restaurants", exactMatch = false)
 
         if (searchTriggers.isNotEmpty()) {
             val trigger = searchTriggers.firstOrNull { it.isClickable } ?: searchTriggers.first()
             GestureDispatcher.clickNode(trigger, service)
-        } else {
-            // Fallback coordinate tap at top search bar
-            val displayMetrics = service.resources.displayMetrics
-            val centerX = displayMetrics.widthPixels / 2f
-            val searchBarY = displayMetrics.heightPixels * 0.16f
-            GestureDispatcher.clickAtCoordinates(service, centerX, searchBarY)
         }
 
-        return fail(step, screen, "Opened search screen. Waiting to enter '$query'...")
+        return fail(step, screen, "Waiting for search box to enter '$query'...")
     }
 
     private fun executeClickRestaurantOrDish(
@@ -191,15 +168,13 @@ class StepExecutor(
         val target = step.target_value ?: return fail(step, screen, "Target value missing.")
         val cleanTarget = target.lowercase().replace("'", "").replace("’", "").trim()
 
-        // 1. Direct text match
+        // 1. Check exact or partial text match
         var matchingNodes = NodeHierarchyScanner.findNodesByText(rootNode, target, exactMatch = false)
-
-        // 2. Cleaned substring match (e.g. "dominos" vs "domino's")
         if (matchingNodes.isEmpty()) {
             matchingNodes = NodeHierarchyScanner.findNodesByText(rootNode, cleanTarget, exactMatch = false)
         }
 
-        // 3. Match keyword stems (e.g. "Domino", "Pizza", "Biryani", "Dosa")
+        // 2. Keyword stems (e.g. "Domino", "Pizza", "Biryani")
         if (matchingNodes.isEmpty()) {
             val words = target.split(" ").filter { it.length >= 4 }
             for (w in words) {
@@ -225,26 +200,23 @@ class StepExecutor(
             }
         }
 
-        // If on search screen with suggestions, click the first suggestion item
-        val suggestionItems = NodeHierarchyScanner.findNodesByText(rootNode, "restaurants", exactMatch = false) +
+        // 3. Fallback to first search result card if available
+        val resultCards = NodeHierarchyScanner.findNodesByText(rootNode, "restaurants", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(rootNode, "dishes", exactMatch = false)
-        if (suggestionItems.isNotEmpty()) {
-            val sug = suggestionItems.firstOrNull { it.isClickable }
-            if (sug != null && GestureDispatcher.clickNode(sug, service)) {
-                return StepExecutionResultDto(
-                    step_id = step.step_id,
-                    step_type = step.step_type,
-                    success = true,
-                    observed_screen = screen.name,
-                    message = "Clicked search suggestion for '$target'"
-                )
-            }
+        val firstCard = resultCards.firstOrNull { it.isClickable }
+        if (firstCard != null && GestureDispatcher.clickNode(firstCard, service)) {
+            return StepExecutionResultDto(
+                step_id = step.step_id,
+                step_type = step.step_type,
+                success = true,
+                observed_screen = screen.name,
+                message = "Selected first result for '$target'"
+            )
         }
 
-        // Scroll slightly downwards to reveal hidden cards
+        // Scroll down to reveal items
         GestureDispatcher.swipeVertical(service, 500f, 1300f, 700f, 300L)
-
-        return fail(step, screen, "Searching screen for '$target'...")
+        return fail(step, screen, "Locating '$target' on screen...")
     }
 
     private fun executeAddToCart(
@@ -254,7 +226,7 @@ class StepExecutor(
     ): StepExecutionResultDto {
         val target = step.target_value ?: ""
 
-        // 1. Check if customization bottom sheet or confirmation is already showing
+        // 1. Confirm any active customization sheet / dialog
         val confirmButtons = NodeHierarchyScanner.findNodesByText(rootNode, "add item", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(rootNode, "continue", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(rootNode, "repeat last", exactMatch = false) +
@@ -268,11 +240,11 @@ class StepExecutor(
                 step_type = step.step_type,
                 success = clicked,
                 observed_screen = screen.name,
-                message = "Confirmed item addition on customization sheet."
+                message = "Confirmed item on customization sheet."
             )
         }
 
-        // 2. Look for "ADD" buttons on screen
+        // 2. Look for "ADD" buttons
         val addButtons = NodeHierarchyScanner.findNodesByText(rootNode, "add", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(rootNode, "+", exactMatch = true)
 
@@ -288,9 +260,9 @@ class StepExecutor(
             )
         }
 
-        // Try gentle scroll down
+        // Scroll down to locate add button
         GestureDispatcher.swipeVertical(service, 500f, 1300f, 700f, 300L)
-        return fail(step, screen, "Could not find 'ADD' button on screen.")
+        return fail(step, screen, "Looking for 'ADD' button on screen...")
     }
 
     private fun executeViewCart(
@@ -316,7 +288,7 @@ class StepExecutor(
             )
         }
 
-        return fail(step, screen, "Could not locate Cart bar or Checkout button.")
+        return fail(step, screen, "Looking for Cart bar...")
     }
 
     private fun executeApplyCustomization(

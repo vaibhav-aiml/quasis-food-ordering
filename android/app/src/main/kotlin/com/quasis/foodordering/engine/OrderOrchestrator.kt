@@ -18,7 +18,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * State machine managing asynchronous end-to-end plan execution with live sequential step tracking.
+ * State machine managing asynchronous end-to-end plan execution with sequential step tracking.
  */
 object OrderOrchestrator {
 
@@ -52,7 +52,7 @@ object OrderOrchestrator {
         currentState = initialState
         notifyStateChange(initialState)
 
-        Log.i(TAG, "Starting asynchronous execution loop for plan: ${plan.plan_id} with ${plan.steps.size} steps")
+        Log.i(TAG, "Starting pipeline execution for plan: ${plan.plan_id} with ${plan.steps.size} steps")
 
         executionJob = orchestratorScope.launch {
             runPlanLoop(plan)
@@ -72,24 +72,24 @@ object OrderOrchestrator {
 
         for (step in plan.steps) {
             if (currentState?.status == ExecutionStatusDto.FAILED) {
-                Log.w(TAG, "Execution loop stopped because plan failed.")
+                Log.w(TAG, "Pipeline halted due to error.")
                 return
             }
 
-            Log.i(TAG, "Executing Step ${step.step_id}: ${step.step_type} (target: '${step.target_value}')")
+            Log.i(TAG, "--> Pipeline Step ${step.step_id}: ${step.step_type} (${step.target_value})")
 
-            // Update state to reflect current step being attempted
+            // Update state before running step
             val stateBefore = currentState?.copy(current_step_id = step.step_id) ?: return
             currentState = stateBefore
             notifyStateChange(stateBefore)
 
-            // Step safety stop check
+            // Step: STOP_FOR_PAYMENT
             if (step.step_type == StepType.STOP_FOR_PAYMENT) {
                 val paymentResult = StepExecutionResultDto(
                     step_id = step.step_id,
                     step_type = step.step_type,
                     success = true,
-                    message = "Reached checkout safely. Handing over to user for payment."
+                    message = "Items added to cart! Reached payment boundary. Handing over to user."
                 )
                 val finalState = stateBefore.copy(
                     status = ExecutionStatusDto.READY_FOR_PAYMENT,
@@ -98,15 +98,15 @@ object OrderOrchestrator {
                 )
                 currentState = finalState
                 notifyStateChange(finalState)
-                Log.i(TAG, "Safety stop reached for plan: ${plan.plan_id}")
+                Log.i(TAG, "Order pipeline successfully completed at cart milestone.")
                 return
             }
 
-            // Step 1: LAUNCH_APP -> give it time to load splash & UI
+            // Step: LAUNCH_APP
             if (step.step_type == StepType.LAUNCH_APP) {
                 val launchResult = executor.execute(step, service.getActiveRoot())
                 if (!launchResult.success && step.is_critical) {
-                    abortCurrentExecution("Failed at Step 1 (LAUNCH_APP): ${launchResult.message}")
+                    abortCurrentExecution("Failed to open app: ${launchResult.message}")
                     return
                 }
                 val updatedState = currentState?.copy(
@@ -115,16 +115,22 @@ object OrderOrchestrator {
                 currentState = updatedState
                 notifyStateChange(updatedState)
 
-                // Wait 3.0s for Swiggy to fully launch and display home screen
-                delay(3000)
+                // Wait 3.5s for Swiggy home screen to fully render
+                delay(3500)
                 continue
             }
 
-            // For UI steps (SEARCH, SELECT, ADD_TO_CART, VIEW_CART, etc.), retry over step timeout
-            val timeoutMs = (step.timeout_seconds.coerceIn(6, 20)) * 1000L
+            // For UI steps (SEARCH, SELECT, ADD_TO_CART, VIEW_CART): Retry loop with polling
+            val timeoutMs = (step.timeout_seconds.coerceIn(8, 25)) * 1000L
             val startTime = System.currentTimeMillis()
             var stepSuccess = false
             var lastResult: StepExecutionResultDto? = null
+
+            // Trigger search view once at step start if step is a search action
+            if (step.step_type == StepType.SEARCH_RESTAURANT || step.step_type == StepType.SEARCH_MENU_ITEM) {
+                executor.prepareSearchScreen()
+                delay(1200)
+            }
 
             while (System.currentTimeMillis() - startTime < timeoutMs) {
                 val rootNode = service.getActiveRoot()
@@ -138,29 +144,35 @@ object OrderOrchestrator {
                     ) ?: return
                     currentState = updatedState
                     notifyStateChange(updatedState)
-                    // Short pause for screen transition / UI animation
-                    delay(1500)
+
+                    // Adaptive delay based on step transition
+                    when (step.step_type) {
+                        StepType.SEARCH_RESTAURANT, StepType.SEARCH_MENU_ITEM -> delay(2000)
+                        StepType.SELECT_RESTAURANT -> delay(2500)
+                        StepType.ADD_TO_CART -> delay(1800)
+                        StepType.VIEW_CART, StepType.PROCEED_TO_CHECKOUT -> delay(2000)
+                        else -> delay(1200)
+                    }
                     break
                 }
 
-                // Retry after brief delay
-                delay(800)
+                // Poll every 700ms
+                delay(700)
             }
 
             if (!stepSuccess) {
                 if (step.is_critical) {
-                    abortCurrentExecution("Failed at step ${step.step_id} (${step.step_type}): ${lastResult?.message ?: "Timed out searching UI"}")
+                    abortCurrentExecution("Failed at step ${step.step_id} (${step.step_type}): ${lastResult?.message ?: "Timed out"}")
                     return
                 } else {
-                    // Non-critical step: record and proceed
-                    val failedNonCritical = lastResult ?: StepExecutionResultDto(
+                    val skippedResult = lastResult ?: StepExecutionResultDto(
                         step_id = step.step_id,
                         step_type = step.step_type,
                         success = false,
-                        message = "Non-critical step skipped after timeout."
+                        message = "Optional step passed."
                     )
                     val updatedState = currentState?.copy(
-                        completed_steps = (currentState?.completed_steps ?: emptyList()) + failedNonCritical
+                        completed_steps = (currentState?.completed_steps ?: emptyList()) + skippedResult
                     ) ?: return
                     currentState = updatedState
                     notifyStateChange(updatedState)
@@ -168,7 +180,7 @@ object OrderOrchestrator {
             }
         }
 
-        // All steps executed
+        // All steps completed safely
         val finalState = currentState?.copy(
             status = ExecutionStatusDto.READY_FOR_PAYMENT,
             ready_for_payment = true
@@ -179,18 +191,12 @@ object OrderOrchestrator {
         }
     }
 
-    /**
-     * Called whenever an AccessibilityEvent is received.
-     */
     fun onAccessibilityEventReceived(event: AccessibilityEvent, rootNode: AccessibilityNodeInfo?) {
-        // Can be used for real-time reactivity
+        // Accessibility event receiver
     }
 
-    /**
-     * Abort execution immediately with error message.
-     */
     fun abortCurrentExecution(reason: String) {
-        Log.w(TAG, "Aborting execution: $reason")
+        Log.w(TAG, "Aborting pipeline: $reason")
         executionJob?.cancel()
         val state = currentState?.copy(
             status = ExecutionStatusDto.FAILED,
