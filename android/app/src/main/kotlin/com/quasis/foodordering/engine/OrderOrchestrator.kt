@@ -123,10 +123,16 @@ object OrderOrchestrator {
             // Reset executor state for this step
             executor.resetSearchState()
 
-            // For UI steps (SEARCH, SELECT, ADD_TO_CART, VIEW_CART): Retry loop with polling
+            // For UI steps: Retry loop with polling
             val isSearchStep = step.step_type == StepType.SEARCH_RESTAURANT || step.step_type == StepType.SEARCH_MENU_ITEM
-            // Give search steps more time (20s) since we need to wait for keyboard
-            val timeoutMs = if (isSearchStep) 20000L else (step.timeout_seconds.coerceIn(8, 25)) * 1000L
+            val isSelectStep = step.step_type == StepType.SELECT_RESTAURANT || step.step_type == StepType.SELECT_ITEM
+
+            // Timeouts: search=25s, select=15s, others=12s
+            val timeoutMs = when {
+                isSearchStep -> 25000L
+                isSelectStep -> 15000L
+                else -> (step.timeout_seconds.coerceIn(8, 25)) * 1000L
+            }
             val startTime = System.currentTimeMillis()
             var stepSuccess = false
             var lastResult: StepExecutionResultDto? = null
@@ -134,12 +140,13 @@ object OrderOrchestrator {
             // Trigger search view once at step start if step is a search action
             if (isSearchStep) {
                 executor.prepareSearchScreen()
-                // Wait 3 seconds for the search screen to fully render and keyboard to appear
+                // Wait 3 seconds for the search screen to fully render
                 delay(3000)
             }
 
             while (System.currentTimeMillis() - startTime < timeoutMs) {
-                val rootNode = service.getActiveRoot()
+                // Use Swiggy-specific root
+                val rootNode = service.getAppRoot("in.swiggy.android")
                 val result = executor.execute(step, rootNode)
                 lastResult = result
 
@@ -151,10 +158,11 @@ object OrderOrchestrator {
                     currentState = updatedState
                     notifyStateChange(updatedState)
 
-                    // Adaptive delay based on step transition
+                    // Adaptive delay for screen transitions
                     when (step.step_type) {
                         StepType.SEARCH_RESTAURANT, StepType.SEARCH_MENU_ITEM -> delay(2500)
-                        StepType.SELECT_RESTAURANT -> delay(2500)
+                        StepType.SELECT_RESTAURANT -> delay(3000) // menu page needs time to load
+                        StepType.SELECT_ITEM -> delay(1500)
                         StepType.ADD_TO_CART -> delay(1800)
                         StepType.VIEW_CART, StepType.PROCEED_TO_CHECKOUT -> delay(2000)
                         else -> delay(1200)
@@ -162,7 +170,7 @@ object OrderOrchestrator {
                     break
                 }
 
-                // Poll every 1s (give keyboard time to appear between retries)
+                // Poll every 1s
                 delay(1000)
             }
 
