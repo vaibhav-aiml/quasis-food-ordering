@@ -18,6 +18,13 @@ import com.quasis.foodordering.models.StepType
 class StepExecutor(
     private val service: FoodAccessibilityService
 ) {
+    companion object {
+        private const val TAG = "StepExecutor"
+    }
+
+    /** Track whether we've already tapped the search bar in a prior retry */
+    private var searchBarTapped = false
+
     fun execute(step: OrderStepDto, rootNode: AccessibilityNodeInfo?): StepExecutionResultDto {
         val currentScreen = ScreenStateDetector.detectScreen(rootNode)
 
@@ -36,9 +43,9 @@ class StepExecutor(
         // 2. Dispatch to specific step action
         return when (step.step_type) {
             StepType.LAUNCH_APP -> executeLaunchApp(step)
-            StepType.SEARCH_RESTAURANT -> executeSearch(step, rootNode, currentScreen)
+            StepType.SEARCH_RESTAURANT -> executeSearch(step, currentScreen)
             StepType.SELECT_RESTAURANT -> executeClickRestaurantOrDish(step, rootNode, currentScreen)
-            StepType.SEARCH_MENU_ITEM -> executeSearch(step, rootNode, currentScreen)
+            StepType.SEARCH_MENU_ITEM -> executeSearch(step, currentScreen)
             StepType.SELECT_ITEM -> executeClickRestaurantOrDish(step, rootNode, currentScreen)
             StepType.APPLY_CUSTOMIZATION -> executeApplyCustomization(step, rootNode, currentScreen)
             StepType.ADD_TO_CART -> executeAddToCart(step, rootNode, currentScreen)
@@ -56,25 +63,25 @@ class StepExecutor(
         }
     }
 
+    /** Reset state between steps */
+    fun resetSearchState() {
+        searchBarTapped = false
+    }
+
     /**
      * Opens the search interface once before typing.
      */
     fun prepareSearchScreen() {
-        val rootNode = service.getActiveRoot()
-        val searchNode = findSearchOrEditableNode(rootNode)
-        if (searchNode != null && (searchNode.isEditable || searchNode.isFocused)) return
-
         try {
             val searchIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("swiggy://search")).apply {
                 setPackage("in.swiggy.android")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             service.startActivity(searchIntent)
+            Log.d(TAG, "Fired swiggy://search deep link")
         } catch (e: Exception) {
-            val displayMetrics = service.resources.displayMetrics
-            val centerX = displayMetrics.widthPixels / 2f
-            val searchBarY = displayMetrics.heightPixels * 0.16f
-            GestureDispatcher.clickAtCoordinates(service, centerX, searchBarY)
+            Log.w(TAG, "Deep link failed, tapping search bar coordinates", e)
+            tapSearchBarCoordinates()
         }
     }
 
@@ -119,49 +126,99 @@ class StepExecutor(
 
     private fun executeSearch(
         step: OrderStepDto,
-        rootNode: AccessibilityNodeInfo?,
         screen: ScreenType
     ): StepExecutionResultDto {
         val query = step.target_value ?: return fail(step, screen, "Search query missing.")
 
-        // 1. Locate search box / focused input
-        val searchNode = findSearchOrEditableNode(rootNode)
-        if (searchNode != null) {
-            val textInjected = GestureDispatcher.setText(service, searchNode, query)
-            if (textInjected) {
-                // If auto-suggestions appear, click matching suggestion
-                val suggestions = NodeHierarchyScanner.findNodesByText(rootNode, query, exactMatch = false)
-                val suggestionNode = suggestions.firstOrNull { it != searchNode && it.isClickable }
-                if (suggestionNode != null) {
-                    GestureDispatcher.clickNode(suggestionNode, service)
-                }
+        // Always get a FRESH root from the service (not the stale one passed in)
+        val freshRoot = service.getActiveRoot()
+        Log.d(TAG, "executeSearch: freshRoot=${freshRoot != null}, searchBarTapped=$searchBarTapped")
+
+        // === Strategy 1: Check if there's an input-focused node ===
+        val focusedNode = freshRoot?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (focusedNode != null) {
+            Log.d(TAG, "Found focused node: class=${focusedNode.className}, editable=${focusedNode.isEditable}")
+            val injected = GestureDispatcher.setText(service, focusedNode, query)
+            if (injected) {
+                Log.i(TAG, "Text injected via focused node")
+                searchBarTapped = false
                 return StepExecutionResultDto(
                     step_id = step.step_id,
                     step_type = step.step_type,
                     success = true,
                     observed_screen = screen.name,
-                    message = "Typed '$query' into search"
+                    message = "Searched for '$query'"
                 )
             }
         }
 
-        // 2. If not on search input yet, click any search bar/button in UI
-        val searchTriggers = NodeHierarchyScanner.findNodesByText(rootNode, "search", exactMatch = false) +
-                NodeHierarchyScanner.findNodesByText(rootNode, "dishes", exactMatch = false) +
-                NodeHierarchyScanner.findNodesByText(rootNode, "restaurants", exactMatch = false)
-
-        if (searchTriggers.isNotEmpty()) {
-            val trigger = searchTriggers.firstOrNull { it.isClickable } ?: searchTriggers.first()
-            GestureDispatcher.clickNode(trigger, service)
-        } else {
-            // Coordinate tap on top search bar
-            val displayMetrics = service.resources.displayMetrics
-            val centerX = displayMetrics.widthPixels / 2f
-            val searchBarY = displayMetrics.heightPixels * 0.16f
-            GestureDispatcher.clickAtCoordinates(service, centerX, searchBarY)
+        // === Strategy 2: Find any node that supports ACTION_SET_TEXT ===
+        val textSettableNodes = findNodesWithSetTextAction(freshRoot)
+        Log.d(TAG, "Found ${textSettableNodes.size} nodes with ACTION_SET_TEXT")
+        for (node in textSettableNodes) {
+            val injected = GestureDispatcher.setText(service, node, query)
+            if (injected) {
+                Log.i(TAG, "Text injected via ACTION_SET_TEXT node: ${node.className}")
+                searchBarTapped = false
+                return StepExecutionResultDto(
+                    step_id = step.step_id,
+                    step_type = step.step_type,
+                    success = true,
+                    observed_screen = screen.name,
+                    message = "Searched for '$query'"
+                )
+            }
         }
 
-        return fail(step, screen, "Entering '$query' in search bar...")
+        // === Strategy 3: Find editable nodes by class name ===
+        val editableNode = findEditableNode(freshRoot)
+        if (editableNode != null) {
+            Log.d(TAG, "Found editable node: class=${editableNode.className}")
+            val injected = GestureDispatcher.setText(service, editableNode, query)
+            if (injected) {
+                Log.i(TAG, "Text injected via editable node")
+                searchBarTapped = false
+                return StepExecutionResultDto(
+                    step_id = step.step_id,
+                    step_type = step.step_type,
+                    success = true,
+                    observed_screen = screen.name,
+                    message = "Searched for '$query'"
+                )
+            }
+        }
+
+        // === Strategy 4: Tap on search bar area to activate keyboard ===
+        if (!searchBarTapped) {
+            Log.d(TAG, "No editable node found. Tapping search area to activate keyboard...")
+
+            // Try clicking nodes with "search" text first
+            val searchNodes = NodeHierarchyScanner.findNodesByText(freshRoot, "search", exactMatch = false)
+            if (searchNodes.isNotEmpty()) {
+                val clickTarget = searchNodes.firstOrNull { it.isClickable } ?: searchNodes.first()
+                GestureDispatcher.clickNode(clickTarget, service)
+                Log.d(TAG, "Clicked 'search' text node")
+            }
+
+            // Also tap at search bar coordinates as backup
+            tapSearchBarCoordinates()
+            searchBarTapped = true
+        } else {
+            // We already tapped - try tapping again at slightly different position
+            val displayMetrics = service.resources.displayMetrics
+            val centerX = displayMetrics.widthPixels / 2f
+            val positions = listOf(0.08f, 0.12f, 0.16f, 0.20f)
+            for (yFraction in positions) {
+                val y = displayMetrics.heightPixels * yFraction
+                GestureDispatcher.clickAtCoordinates(service, centerX, y)
+            }
+            Log.d(TAG, "Re-tapped search area at multiple positions")
+        }
+
+        // Dump tree info for debugging
+        logNodeTree(freshRoot, 0)
+
+        return fail(step, screen, "Activating search input for '$query'...")
     }
 
     private fun executeClickRestaurantOrDish(
@@ -170,7 +227,7 @@ class StepExecutor(
         screen: ScreenType
     ): StepExecutionResultDto {
         val target = step.target_value ?: return fail(step, screen, "Target value missing.")
-        val cleanTarget = target.lowercase().replace("'", "").replace("’", "").trim()
+        val cleanTarget = target.lowercase().replace("'", "").replace("\u2019", "").trim()
 
         // 1. Check exact or partial text match
         var matchingNodes = NodeHierarchyScanner.findNodesByText(rootNode, target, exactMatch = false)
@@ -318,34 +375,55 @@ class StepExecutor(
         )
     }
 
-    private fun findSearchOrEditableNode(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+    // ============ Helper functions ============
+
+    private fun tapSearchBarCoordinates() {
+        val displayMetrics = service.resources.displayMetrics
+        val centerX = displayMetrics.widthPixels / 2f
+        // Tap at top 12% of screen where search bar usually is
+        val searchBarY = displayMetrics.heightPixels * 0.12f
+        GestureDispatcher.clickAtCoordinates(service, centerX, searchBarY)
+    }
+
+    /**
+     * Find ALL nodes that support ACTION_SET_TEXT — the most reliable way to detect text-injectable fields.
+     */
+    private fun findNodesWithSetTextAction(root: AccessibilityNodeInfo?): List<AccessibilityNodeInfo> {
+        if (root == null) return emptyList()
+        val results = mutableListOf<AccessibilityNodeInfo>()
+
+        fun traverse(node: AccessibilityNodeInfo?) {
+            if (node == null) return
+            val actions = node.actionList
+            if (actions != null && actions.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }) {
+                results.add(node)
+            }
+            for (i in 0 until node.childCount) {
+                traverse(node.getChild(i))
+            }
+        }
+
+        traverse(root)
+        return results
+    }
+
+    /**
+     * Find editable node by class name, isEditable flag, or view ID.
+     */
+    private fun findEditableNode(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
         if (root == null) return null
-
-        // 1. Direct input focus
-        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-        if (focused != null) return focused
-
-        // 2. Hierarchy traversal
         var candidate: AccessibilityNodeInfo? = null
+
         fun traverse(node: AccessibilityNodeInfo?) {
             if (node == null || candidate != null) return
 
             val cls = node.className?.toString() ?: ""
-            val viewId = node.viewIdResourceName?.lowercase() ?: ""
-            val text = node.text?.toString()?.lowercase() ?: ""
-            val desc = node.contentDescription?.toString()?.lowercase() ?: ""
-
-            if (node.isEditable || cls.contains("EditText", ignoreCase = true) || cls.contains("AutoComplete", ignoreCase = true)) {
-                candidate = node
-                return
-            }
-
-            if (viewId.contains("search") && (node.isFocusable || node.isClickable || node.isEditable)) {
-                candidate = node
-                return
-            }
-
-            if ((text.contains("search") || desc.contains("search")) && (node.isFocusable || node.isClickable)) {
+            if (node.isEditable ||
+                cls.contains("EditText", ignoreCase = true) ||
+                cls.contains("AutoComplete", ignoreCase = true) ||
+                cls.contains("SearchView", ignoreCase = true) ||
+                cls.contains("TextField", ignoreCase = true) ||
+                cls.contains("TextInput", ignoreCase = true)) {
                 candidate = node
                 return
             }
@@ -357,6 +435,24 @@ class StepExecutor(
 
         traverse(root)
         return candidate
+    }
+
+    /**
+     * Log the node tree for debugging (first 3 levels only).
+     */
+    private fun logNodeTree(node: AccessibilityNodeInfo?, depth: Int) {
+        if (node == null || depth > 3) return
+        val indent = "  ".repeat(depth)
+        val cls = node.className?.toString() ?: "?"
+        val text = node.text?.toString()?.take(30) ?: ""
+        val desc = node.contentDescription?.toString()?.take(30) ?: ""
+        val editable = if (node.isEditable) " [EDITABLE]" else ""
+        val focused = if (node.isFocused) " [FOCUSED]" else ""
+        val actions = node.actionList?.joinToString(",") { "${it.id}" } ?: ""
+        Log.d(TAG, "${indent}Node: $cls text='$text' desc='$desc'$editable$focused actions=[$actions]")
+        for (i in 0 until node.childCount) {
+            logNodeTree(node.getChild(i), depth + 1)
+        }
     }
 
     private fun fail(step: OrderStepDto, screen: ScreenType, msg: String): StepExecutionResultDto {

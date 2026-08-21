@@ -120,16 +120,22 @@ object OrderOrchestrator {
                 continue
             }
 
+            // Reset executor state for this step
+            executor.resetSearchState()
+
             // For UI steps (SEARCH, SELECT, ADD_TO_CART, VIEW_CART): Retry loop with polling
-            val timeoutMs = (step.timeout_seconds.coerceIn(8, 25)) * 1000L
+            val isSearchStep = step.step_type == StepType.SEARCH_RESTAURANT || step.step_type == StepType.SEARCH_MENU_ITEM
+            // Give search steps more time (20s) since we need to wait for keyboard
+            val timeoutMs = if (isSearchStep) 20000L else (step.timeout_seconds.coerceIn(8, 25)) * 1000L
             val startTime = System.currentTimeMillis()
             var stepSuccess = false
             var lastResult: StepExecutionResultDto? = null
 
             // Trigger search view once at step start if step is a search action
-            if (step.step_type == StepType.SEARCH_RESTAURANT || step.step_type == StepType.SEARCH_MENU_ITEM) {
+            if (isSearchStep) {
                 executor.prepareSearchScreen()
-                delay(1200)
+                // Wait 3 seconds for the search screen to fully render and keyboard to appear
+                delay(3000)
             }
 
             while (System.currentTimeMillis() - startTime < timeoutMs) {
@@ -147,7 +153,7 @@ object OrderOrchestrator {
 
                     // Adaptive delay based on step transition
                     when (step.step_type) {
-                        StepType.SEARCH_RESTAURANT, StepType.SEARCH_MENU_ITEM -> delay(2000)
+                        StepType.SEARCH_RESTAURANT, StepType.SEARCH_MENU_ITEM -> delay(2500)
                         StepType.SELECT_RESTAURANT -> delay(2500)
                         StepType.ADD_TO_CART -> delay(1800)
                         StepType.VIEW_CART, StepType.PROCEED_TO_CHECKOUT -> delay(2000)
@@ -156,8 +162,8 @@ object OrderOrchestrator {
                     break
                 }
 
-                // Poll every 700ms
-                delay(700)
+                // Poll every 1s (give keyboard time to appear between retries)
+                delay(1000)
             }
 
             if (!stepSuccess) {
