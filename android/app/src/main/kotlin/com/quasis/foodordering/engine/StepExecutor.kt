@@ -61,24 +61,67 @@ class StepExecutor(private val service: AccessibilityService) {
         val packageName = step.parameters["package_name"]?.toString()
             ?.removeSurrounding("\"") ?: "in.swiggy.android"
 
-        val launchIntent = service.packageManager.getLaunchIntentForPackage(packageName)
-        return if (launchIntent != null) {
+        var launchIntent = service.packageManager.getLaunchIntentForPackage(packageName)
+        if (launchIntent == null) {
+            val intent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                setPackage(packageName)
+            }
+            val matches = service.packageManager.queryIntentActivities(intent, 0)
+            if (matches.isNotEmpty()) {
+                val activityInfo = matches[0].activityInfo
+                launchIntent = Intent(Intent.ACTION_MAIN).apply {
+                    setClassName(activityInfo.packageName, activityInfo.name)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            }
+        }
+
+        if (launchIntent != null) {
             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             service.startActivity(launchIntent)
-            StepExecutionResultDto(
+            return StepExecutionResultDto(
                 step_id = step.step_id,
                 step_type = step.step_type,
                 success = true,
                 message = "Launched package: $packageName"
             )
-        } else {
-            StepExecutionResultDto(
-                step_id = step.step_id,
-                step_type = step.step_type,
-                success = false,
-                message = "Could not find launch intent for package: $packageName"
-            )
         }
+
+        // Direct fallback: try launching via deep links or explicit component
+        val fallbackIntents = listOf(
+            Intent(Intent.ACTION_VIEW, android.net.Uri.parse("swiggy://explore")),
+            Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.swiggy.com/")).apply { setPackage(packageName) },
+            Intent(Intent.ACTION_MAIN).apply {
+                setClassName("in.swiggy.android", "in.swiggy.android.activities.HomeActivity")
+            },
+            Intent(Intent.ACTION_MAIN).apply {
+                setClassName("in.swiggy.android", "in.swiggy.android.activities.MainActivity")
+            }
+        )
+
+        for (cand in fallbackIntents) {
+            try {
+                cand.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                service.startActivity(cand)
+                return StepExecutionResultDto(
+                    step_id = step.step_id,
+                    step_type = step.step_type,
+                    success = true,
+                    message = "Launched package: $packageName"
+                )
+            } catch (e: Exception) {
+                // Try next
+            }
+        }
+
+        val appName = if (packageName.contains("swiggy")) "Swiggy" else "food ordering app"
+        return StepExecutionResultDto(
+            step_id = step.step_id,
+            step_type = step.step_type,
+            success = false,
+            message = "$appName is not installed or launch intent was blocked by Android permissions. (package: $packageName)"
+        )
     }
 
     private fun executeSearch(

@@ -136,7 +136,7 @@ class MainActivity : AppCompatActivity() {
     private fun startAgentOrderFlow(prompt: String) {
         var serverUrl = etServerUrl.text.toString().trim()
         if (serverUrl.isEmpty()) {
-            serverUrl = "http://192.168.1.5:8000"
+            serverUrl = "http://192.168.1.5:8008"
         }
         if (!serverUrl.startsWith("http://") && !serverUrl.startsWith("https://")) {
             serverUrl = "http://$serverUrl"
