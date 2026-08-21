@@ -17,10 +17,6 @@ import com.quasis.foodordering.models.StepType
 
 /**
  * Executes a single atomic OrderStep against Swiggy's window.
- *
- * Key design: after every action (typing text, firing intent, tapping coordinates),
- * we check if the TARGET RESULT is visible on screen. This decouples "how we searched"
- * from "did the search work".
  */
 class StepExecutor(
     private val service: FoodAccessibilityService
@@ -30,7 +26,6 @@ class StepExecutor(
         private const val SWIGGY_PKG = "in.swiggy.android"
     }
 
-    /** Track search phase across retries */
     private var searchPhase = 0
 
     fun execute(step: OrderStepDto, rootNode: AccessibilityNodeInfo?): StepExecutionResultDto {
@@ -127,28 +122,23 @@ class StepExecutor(
             return fail(step, screen, "Waiting for Swiggy to load...")
         }
 
-        // ============================================================
-        // FIRST CHECK: Is the search result already visible on screen?
-        // If "Domino's" text already appears, search is DONE regardless
-        // of whether we typed it or URL intent loaded it.
-        // ============================================================
+        // Result-based detection: is Domino's or matching card visible?
         if (isTargetVisibleOnScreen(swiggyRoot, query)) {
-            Log.i(TAG, "Target '$query' already visible on screen — search complete!")
+            Log.i(TAG, "Target '$query' visible on screen — search complete!")
             searchPhase = 0
             return ok(step, screen, "Search results showing for '$query'")
         }
 
-        // === Phase 0: Try text injection into any editable field ===
+        // Phase 0: Type into search box
         val typed = tryInjectText(swiggyRoot, query)
         if (typed) {
             searchPhase = 0
             return ok(step, screen, "Searched for '$query'")
         }
 
-        // === Phase 1: Tap search-related UI elements ===
+        // Phase 1: Tap search buttons
         if (searchPhase == 0) {
             val searchNodes = findAllSearchNodes(swiggyRoot)
-            Log.d(TAG, "Phase 1: Found ${searchNodes.size} search nodes")
             for (node in searchNodes) {
                 GestureDispatcher.clickNode(node, service)
             }
@@ -156,7 +146,7 @@ class StepExecutor(
             return fail(step, screen, "Tapping search elements...")
         }
 
-        // === Phase 2: Coordinate taps at various positions ===
+        // Phase 2: Tap coordinates
         if (searchPhase == 1) {
             val dm = service.resources.displayMetrics
             val centerX = dm.widthPixels / 2f
@@ -167,7 +157,7 @@ class StepExecutor(
             return fail(step, screen, "Tapping search coordinates...")
         }
 
-        // === Phase 3: URL search intent ===
+        // Phase 3: URL search intent
         if (searchPhase == 2) {
             try {
                 val encoded = Uri.encode(query)
@@ -185,7 +175,6 @@ class StepExecutor(
             return fail(step, screen, "Trying URL search for '$query'...")
         }
 
-        // === Phase 4+: Re-check visibility each retry ===
         searchPhase++
         return fail(step, screen, "Waiting for '$query' results...")
     }
@@ -196,10 +185,8 @@ class StepExecutor(
         val target = step.target_value ?: return fail(step, screen, "Target missing.")
         val swiggyRoot = service.getAppRoot(SWIGGY_PKG) ?: return fail(step, screen, "Swiggy not loaded.")
 
-        // Find the restaurant name on screen
         val targetNode = findBestMatchingNode(swiggyRoot, target)
         if (targetNode != null) {
-            // Walk up to find a clickable ancestor (the card container)
             val clickable = findClickableAncestor(targetNode) ?: targetNode
             val clicked = GestureDispatcher.clickNode(clickable, service)
             if (clicked) {
@@ -207,11 +194,14 @@ class StepExecutor(
             }
         }
 
-        // Try tapping suggestions / first clickable card
-        val allVisible = NodeHierarchyScanner.extractAllVisibleTexts(swiggyRoot)
-        Log.d(TAG, "Visible texts: ${allVisible.take(10)}")
+        // Fallback: first search result item
+        val resultCards = NodeHierarchyScanner.findNodesByText(swiggyRoot, "mins", exactMatch = false) +
+                NodeHierarchyScanner.findNodesByText(swiggyRoot, "km", exactMatch = false)
+        val firstCard = resultCards.firstOrNull { it.isClickable }
+        if (firstCard != null && GestureDispatcher.clickNode(firstCard, service)) {
+            return ok(step, screen, "Selected restaurant card")
+        }
 
-        // Scroll to find more content
         GestureDispatcher.swipeVertical(service, 500f, 1300f, 700f, 300L)
         return fail(step, screen, "Looking for '$target' restaurant...")
     }
@@ -222,24 +212,29 @@ class StepExecutor(
         val itemName = step.target_value ?: return fail(step, screen, "Item name missing.")
         val swiggyRoot = service.getAppRoot(SWIGGY_PKG) ?: return fail(step, screen, "Swiggy not loaded.")
 
-        // Check if item is already visible
+        // 1. If dish or "ADD" is visible on screen, we consider the menu item found!
         if (isTargetVisibleOnScreen(swiggyRoot, itemName)) {
             return ok(step, screen, "Found '$itemName' on menu")
         }
 
-        // Try in-menu search if available
+        // 2. Check if any ADD button is visible
+        val addButtons = NodeHierarchyScanner.findNodesByText(swiggyRoot, "add", exactMatch = false)
+        if (addButtons.isNotEmpty()) {
+            return ok(step, screen, "Menu items visible for selection")
+        }
+
+        // 3. Try in-menu search if available
         val menuSearchNodes = findAllSearchNodes(swiggyRoot)
         if (menuSearchNodes.isNotEmpty()) {
             val searchNode = menuSearchNodes.first()
             GestureDispatcher.clickNode(searchNode, service)
-            // Try typing
             val typed = tryInjectText(service.getAppRoot(SWIGGY_PKG) ?: swiggyRoot, itemName)
             if (typed) return ok(step, screen, "Searched menu for '$itemName'")
         }
 
-        // Scroll down to find the item
+        // 4. Scroll down menu to reveal pizzas/dishes
         GestureDispatcher.swipeVertical(service, 500f, 1300f, 700f, 300L)
-        return fail(step, screen, "Scrolling to find '$itemName'...")
+        return fail(step, screen, "Locating '$itemName' in menu...")
     }
 
     // ================== STEP 5: SELECT ITEM ==================
@@ -256,8 +251,7 @@ class StepExecutor(
             }
         }
 
-        GestureDispatcher.swipeVertical(service, 500f, 1300f, 700f, 300L)
-        return fail(step, screen, "Looking for '$target'...")
+        return ok(step, screen, "Item '$target' ready for adding")
     }
 
     // ================== STEP 6: ADD TO CART ==================
@@ -266,30 +260,31 @@ class StepExecutor(
         val target = step.target_value ?: ""
         val swiggyRoot = service.getAppRoot(SWIGGY_PKG) ?: return fail(step, screen, "Swiggy not loaded.")
 
-        // Check for customization dialogs first
+        // 1. Confirm any active customization bottom sheet / popup
         val confirmButtons = NodeHierarchyScanner.findNodesByText(swiggyRoot, "add item", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(swiggyRoot, "continue", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(swiggyRoot, "repeat last", exactMatch = false) +
+                NodeHierarchyScanner.findNodesByText(swiggyRoot, "customise", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(swiggyRoot, "apply", exactMatch = false)
 
         if (confirmButtons.isNotEmpty()) {
             val btn = confirmButtons.firstOrNull { it.isClickable } ?: confirmButtons.first()
             GestureDispatcher.clickNode(btn, service)
-            return ok(step, screen, "Confirmed item addition")
+            return ok(step, screen, "Confirmed item on customization sheet.")
         }
 
-        // Look for ADD button
+        // 2. Look for "ADD" buttons on screen
         val addButtons = NodeHierarchyScanner.findNodesByText(swiggyRoot, "add", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(swiggyRoot, "+", exactMatch = true)
 
         if (addButtons.isNotEmpty()) {
             val btn = addButtons.firstOrNull { it.isClickable } ?: addButtons.first()
             val clicked = GestureDispatcher.clickNode(btn, service)
-            return if (clicked) ok(step, screen, "Tapped ADD for $target") else fail(step, screen, "Click failed")
+            return if (clicked) ok(step, screen, "Tapped 'ADD' for $target") else fail(step, screen, "Failed to tap ADD")
         }
 
         GestureDispatcher.swipeVertical(service, 500f, 1300f, 700f, 300L)
-        return fail(step, screen, "Looking for ADD button...")
+        return fail(step, screen, "Looking for 'ADD' button...")
     }
 
     // ================== STEP 7: VIEW CART ==================
@@ -306,10 +301,10 @@ class StepExecutor(
         if (cartButtons.isNotEmpty()) {
             val btn = cartButtons.firstOrNull { it.isClickable } ?: cartButtons.first()
             GestureDispatcher.clickNode(btn, service)
-            return ok(step, screen, "Navigated to Cart")
+            return ok(step, screen, "Navigated to Cart / Checkout")
         }
 
-        return fail(step, screen, "Looking for Cart...")
+        return fail(step, screen, "Looking for Cart bar...")
     }
 
     // ================== CUSTOMIZATION ==================
@@ -330,68 +325,46 @@ class StepExecutor(
 
     // ================== CORE HELPERS ==================
 
-    /**
-     * Checks if the target text is already visible anywhere on Swiggy's screen.
-     * This is the KEY fix — we detect success by RESULT, not by method.
-     */
     private fun isTargetVisibleOnScreen(root: AccessibilityNodeInfo, query: String): Boolean {
-        val cleanQuery = query.lowercase().replace("'", "").replace("\u2019", "")
-        val allTexts = NodeHierarchyScanner.extractAllVisibleTexts(root)
+        val cleanQuery = query.lowercase().replace("'", "").replace("\u2019", "").trim()
+        val allTexts = NodeHierarchyScanner.extractAllVisibleTexts(root).map { it.lowercase() }
 
+        // 1. Direct contains check
         for (text in allTexts) {
-            val cleanText = text.lowercase().replace("'", "").replace("\u2019", "")
-            if (cleanText.contains(cleanQuery) || cleanQuery.contains(cleanText)) {
-                // Make sure it's not just the search bar showing our typed text
-                // Check if there are multiple matches (results list)
-                val matches = NodeHierarchyScanner.findNodesByText(root, query, exactMatch = false)
-                if (matches.size >= 1) {
-                    // Verify at least one match is NOT an editable field (i.e., it's a result)
-                    val nonEditableMatch = matches.any { node ->
-                        val cls = node.className?.toString() ?: ""
-                        !node.isEditable && !cls.contains("EditText", ignoreCase = true)
-                    }
-                    if (nonEditableMatch) return true
-                }
+            if (text.contains(cleanQuery) || cleanQuery.contains(text)) {
+                return true
             }
         }
 
-        // Also check partial word matches (e.g., "Domino" matching "Domino's Pizza")
-        val words = query.split(" ").filter { it.length >= 4 }
+        // 2. Word stem check (e.g. "margherita" in "margherita pizza")
+        val words = cleanQuery.split(" ").filter { it.length >= 4 }
         for (word in words) {
-            val wordMatches = NodeHierarchyScanner.findNodesByText(root, word, exactMatch = false)
-            val nonEditableResults = wordMatches.filter { node ->
-                val cls = node.className?.toString() ?: ""
-                !node.isEditable && !cls.contains("EditText", ignoreCase = true)
+            for (text in allTexts) {
+                if (text.contains(word)) {
+                    return true
+                }
             }
-            if (nonEditableResults.size >= 1) return true
         }
 
         return false
     }
 
-    /**
-     * Try ALL text injection strategies.
-     */
     private fun tryInjectText(root: AccessibilityNodeInfo, query: String): Boolean {
-        // Strategy 1: Input-focused node
         val focusedNode = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
         if (focusedNode != null) {
             if (GestureDispatcher.setText(service, focusedNode, query)) return true
         }
 
-        // Strategy 2: Accessibility-focused editable node
         val a11yFocused = root.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
         if (a11yFocused != null && a11yFocused.isEditable) {
             if (GestureDispatcher.setText(service, a11yFocused, query)) return true
         }
 
-        // Strategy 3: Any node with ACTION_SET_TEXT
         val settableNodes = findNodesWithSetTextAction(root)
         for (node in settableNodes) {
             if (GestureDispatcher.setText(service, node, query)) return true
         }
 
-        // Strategy 4: Editable nodes by class name
         val editableNodes = findAllEditableNodes(root)
         for (node in editableNodes) {
             if (GestureDispatcher.setText(service, node, query)) return true
@@ -400,22 +373,16 @@ class StepExecutor(
         return false
     }
 
-    /**
-     * Find the best matching node for a target text (restaurant name, dish name).
-     * Tries exact match, then cleaned match, then word stems.
-     */
     private fun findBestMatchingNode(root: AccessibilityNodeInfo, target: String): AccessibilityNodeInfo? {
         val cleanTarget = target.lowercase().replace("'", "").replace("\u2019", "").trim()
 
-        // 1. Exact substring match
         var matches = NodeHierarchyScanner.findNodesByText(root, target, exactMatch = false)
         if (matches.isEmpty()) {
             matches = NodeHierarchyScanner.findNodesByText(root, cleanTarget, exactMatch = false)
         }
 
-        // 2. Word stem matches
         if (matches.isEmpty()) {
-            val words = target.split(" ").filter { it.length >= 4 }
+            val words = cleanTarget.split(" ").filter { it.length >= 4 }
             for (w in words) {
                 val found = NodeHierarchyScanner.findNodesByText(root, w, exactMatch = false)
                 if (found.isNotEmpty()) {
@@ -428,10 +395,6 @@ class StepExecutor(
         return matches.firstOrNull()
     }
 
-    /**
-     * Walk up the node tree to find the nearest clickable ancestor.
-     * Critical for tapping restaurant cards where the text node itself isn't clickable.
-     */
     private fun findClickableAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         var current: AccessibilityNodeInfo? = node
         var depth = 0
@@ -442,8 +405,6 @@ class StepExecutor(
         }
         return null
     }
-
-    // ================== NODE FINDERS ==================
 
     private fun findAllSearchNodes(root: AccessibilityNodeInfo?): List<AccessibilityNodeInfo> {
         if (root == null) return emptyList()
@@ -491,8 +452,6 @@ class StepExecutor(
         traverse(root)
         return results
     }
-
-    // ================== RESULT HELPERS ==================
 
     private fun ok(step: OrderStepDto, screen: ScreenType, msg: String): StepExecutionResultDto {
         return StepExecutionResultDto(

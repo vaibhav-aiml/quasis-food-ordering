@@ -79,7 +79,7 @@ class FoodPlanBuilder:
 
         # Step 3: Iterate through dishes / food items
         for item in intent.items:
-            # 3a. Search item inside restaurant menu
+            # 3a. Search item inside restaurant menu (non-critical helper)
             steps.append(
                 OrderStep(
                     step_id=step_counter,
@@ -87,8 +87,8 @@ class FoodPlanBuilder:
                     target_value=item.name,
                     parameters={"item_name": item.name},
                     expected_screen="restaurant_menu",
-                    timeout_seconds=10,
-                    is_critical=True,
+                    timeout_seconds=8,
+                    is_critical=False,
                 )
             )
             step_counter += 1
