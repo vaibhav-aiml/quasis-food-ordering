@@ -18,13 +18,11 @@ import com.quasis.foodordering.models.StepType
 class StepExecutor(
     private val service: FoodAccessibilityService
 ) {
-    private val safetyGuard = ExecutionSafetyGuard()
-
     fun execute(step: OrderStepDto, rootNode: AccessibilityNodeInfo?): StepExecutionResultDto {
         val currentScreen = ScreenStateDetector.detectScreen(rootNode)
 
         // 1. Safety verification
-        val safetyHaltReason = safetyGuard.evaluateSafety(step, currentScreen)
+        val safetyHaltReason = ExecutionSafetyGuard.validateStepSafety(step, currentScreen)
         if (safetyHaltReason != null) {
             return StepExecutionResultDto(
                 step_id = step.step_id,
