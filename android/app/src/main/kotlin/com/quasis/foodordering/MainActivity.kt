@@ -134,7 +134,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startAgentOrderFlow(prompt: String) {
-        val serverUrl = etServerUrl.text.toString().trim()
+        var serverUrl = etServerUrl.text.toString().trim()
+        if (serverUrl.isEmpty()) {
+            serverUrl = "http://192.168.1.5:8000"
+        }
+        if (!serverUrl.startsWith("http://") && !serverUrl.startsWith("https://")) {
+            serverUrl = "http://$serverUrl"
+        }
+        // Remove duplicate protocol prefixes if user pasted
+        while (serverUrl.contains("http://http://") || serverUrl.contains("http://https://")) {
+            serverUrl = serverUrl.replace("http://http://", "http://").replace("http://https://", "https://")
+        }
+        serverUrl = serverUrl.trimEnd('/')
+
         val client = BackendApiClient(baseUrl = serverUrl)
 
         cardProgress.visibility = View.VISIBLE
