@@ -61,8 +61,8 @@ class StepExecutor(
      */
     fun prepareSearchScreen() {
         val rootNode = service.getActiveRoot()
-        val editableNodes = findEditableNodes(rootNode)
-        if (editableNodes.isNotEmpty()) return
+        val searchNode = findSearchOrEditableNode(rootNode)
+        if (searchNode != null && (searchNode.isEditable || searchNode.isFocused)) return
 
         try {
             val searchIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("swiggy://search")).apply {
@@ -124,16 +124,14 @@ class StepExecutor(
     ): StepExecutionResultDto {
         val query = step.target_value ?: return fail(step, screen, "Search query missing.")
 
-        // 1. Locate editable search field
-        val editableNodes = findEditableNodes(rootNode)
-        if (editableNodes.isNotEmpty()) {
-            val targetBox = editableNodes.first()
-            GestureDispatcher.clickNode(targetBox, service)
-            val textSet = GestureDispatcher.setText(targetBox, query)
-            if (textSet) {
-                // If auto-suggestions appear, tap the first matching suggestion
+        // 1. Locate search box / focused input
+        val searchNode = findSearchOrEditableNode(rootNode)
+        if (searchNode != null) {
+            val textInjected = GestureDispatcher.setText(service, searchNode, query)
+            if (textInjected) {
+                // If auto-suggestions appear, click matching suggestion
                 val suggestions = NodeHierarchyScanner.findNodesByText(rootNode, query, exactMatch = false)
-                val suggestionNode = suggestions.firstOrNull { it != targetBox && it.isClickable }
+                val suggestionNode = suggestions.firstOrNull { it != searchNode && it.isClickable }
                 if (suggestionNode != null) {
                     GestureDispatcher.clickNode(suggestionNode, service)
                 }
@@ -142,12 +140,12 @@ class StepExecutor(
                     step_type = step.step_type,
                     success = true,
                     observed_screen = screen.name,
-                    message = "Searched for '$query'"
+                    message = "Typed '$query' into search"
                 )
             }
         }
 
-        // 2. If not on search input yet, click search trigger
+        // 2. If not on search input yet, click any search bar/button in UI
         val searchTriggers = NodeHierarchyScanner.findNodesByText(rootNode, "search", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(rootNode, "dishes", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(rootNode, "restaurants", exactMatch = false)
@@ -155,9 +153,15 @@ class StepExecutor(
         if (searchTriggers.isNotEmpty()) {
             val trigger = searchTriggers.firstOrNull { it.isClickable } ?: searchTriggers.first()
             GestureDispatcher.clickNode(trigger, service)
+        } else {
+            // Coordinate tap on top search bar
+            val displayMetrics = service.resources.displayMetrics
+            val centerX = displayMetrics.widthPixels / 2f
+            val searchBarY = displayMetrics.heightPixels * 0.16f
+            GestureDispatcher.clickAtCoordinates(service, centerX, searchBarY)
         }
 
-        return fail(step, screen, "Waiting for search box to enter '$query'...")
+        return fail(step, screen, "Entering '$query' in search bar...")
     }
 
     private fun executeClickRestaurantOrDish(
@@ -314,23 +318,45 @@ class StepExecutor(
         )
     }
 
-    private fun findEditableNodes(root: AccessibilityNodeInfo?): List<AccessibilityNodeInfo> {
-        if (root == null) return emptyList()
-        val results = mutableListOf<AccessibilityNodeInfo>()
+    private fun findSearchOrEditableNode(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (root == null) return null
 
+        // 1. Direct input focus
+        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (focused != null) return focused
+
+        // 2. Hierarchy traversal
+        var candidate: AccessibilityNodeInfo? = null
         fun traverse(node: AccessibilityNodeInfo?) {
-            if (node == null) return
+            if (node == null || candidate != null) return
+
             val cls = node.className?.toString() ?: ""
-            if (node.isEditable || cls.contains("EditText", ignoreCase = true) || cls.contains("AutoCompleteTextView", ignoreCase = true) || cls.contains("SearchView", ignoreCase = true)) {
-                results.add(node)
+            val viewId = node.viewIdResourceName?.lowercase() ?: ""
+            val text = node.text?.toString()?.lowercase() ?: ""
+            val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+
+            if (node.isEditable || cls.contains("EditText", ignoreCase = true) || cls.contains("AutoComplete", ignoreCase = true)) {
+                candidate = node
+                return
             }
+
+            if (viewId.contains("search") && (node.isFocusable || node.isClickable || node.isEditable)) {
+                candidate = node
+                return
+            }
+
+            if ((text.contains("search") || desc.contains("search")) && (node.isFocusable || node.isClickable)) {
+                candidate = node
+                return
+            }
+
             for (i in 0 until node.childCount) {
                 traverse(node.getChild(i))
             }
         }
 
         traverse(root)
-        return results
+        return candidate
     }
 
     private fun fail(step: OrderStepDto, screen: ScreenType, msg: String): StepExecutionResultDto {

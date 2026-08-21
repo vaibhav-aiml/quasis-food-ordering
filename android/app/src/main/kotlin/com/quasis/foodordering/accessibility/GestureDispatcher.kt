@@ -2,6 +2,9 @@ package com.quasis.foodordering.accessibility
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Bundle
@@ -31,7 +34,7 @@ object GestureDispatcher {
         if (service != null) {
             val bounds = Rect()
             node.getBoundsInScreen(bounds)
-            if (!bounds.isEmpty) {
+            if (!bounds.isEmpty && bounds.centerX() > 0 && bounds.centerY() > 0) {
                 val x = bounds.centerX().toFloat()
                 val y = bounds.centerY().toFloat()
                 return clickAtCoordinates(service, x, y)
@@ -42,14 +45,40 @@ object GestureDispatcher {
     }
 
     /**
-     * Sets text into an editable AccessibilityNodeInfo.
+     * Sets text into an AccessibilityNodeInfo with focus and clipboard paste fallbacks.
      */
-    fun setText(node: AccessibilityNodeInfo?, text: String): Boolean {
+    fun setText(
+        service: AccessibilityService,
+        node: AccessibilityNodeInfo?,
+        text: String
+    ): Boolean {
         if (node == null) return false
+
+        // 1. Give focus & click node to activate input connection
+        node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        clickNode(node, service)
+
+        // 2. Native ACTION_SET_TEXT
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
-        return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        val setSuccess = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        if (setSuccess) return true
+
+        // 3. Fallback: Copy to clipboard and PASTE
+        try {
+            val clipboard = service.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            if (clipboard != null) {
+                val clip = ClipData.newPlainText("order_search_query", text)
+                clipboard.setPrimaryClip(clip)
+                val pasted = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+                if (pasted) return true
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
+
+        return false
     }
 
     /**
