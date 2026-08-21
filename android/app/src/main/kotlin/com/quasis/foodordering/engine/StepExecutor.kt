@@ -148,11 +148,30 @@ class StepExecutor(
             }
         }
 
-        // 2. Look for search bar / button on home or restaurant menu to open the search screen
+        // 2. Direct Search Intent: open Swiggy search screen directly via official deep-link
+        try {
+            val searchIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("swiggy://search")).apply {
+                setPackage("in.swiggy.android")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            service.startActivity(searchIntent)
+            return StepExecutionResultDto(
+                step_id = step.step_id,
+                step_type = step.step_type,
+                success = true,
+                observed_screen = screen.name,
+                message = "Opened Swiggy search page for '$query'"
+            )
+        } catch (e: Exception) {
+            // fallback to UI search triggers below
+        }
+
+        // 3. Look for search bar / button on home or restaurant menu to open the search screen
         val searchTriggers = NodeHierarchyScanner.findNodesByText(rootNode, "search", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(rootNode, "search for", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(rootNode, "dishes", exactMatch = false) +
-                NodeHierarchyScanner.findNodesByText(rootNode, "restaurants", exactMatch = false)
+                NodeHierarchyScanner.findNodesByText(rootNode, "restaurants", exactMatch = false) +
+                NodeHierarchyScanner.findNodesByText(rootNode, "food", exactMatch = false)
 
         if (searchTriggers.isNotEmpty()) {
             val trigger = searchTriggers.firstOrNull { it.isClickable } ?: searchTriggers.first()
@@ -168,7 +187,22 @@ class StepExecutor(
             }
         }
 
-        return fail(step, screen, "No search trigger or edit field found on current screen.")
+        // 4. Coordinate fallback: tap top search bar area
+        val displayMetrics = service.resources.displayMetrics
+        val centerX = displayMetrics.widthPixels / 2f
+        val searchBarY = displayMetrics.heightPixels * 0.16f
+        val tapped = GestureDispatcher.clickAtCoordinates(service, centerX, searchBarY)
+        if (tapped) {
+            return StepExecutionResultDto(
+                step_id = step.step_id,
+                step_type = step.step_type,
+                success = true,
+                observed_screen = screen.name,
+                message = "Tapped search bar area for '$query'"
+            )
+        }
+
+        return fail(step, screen, "Waiting for search interface...")
     }
 
     private fun executeClickRestaurantOrDish(

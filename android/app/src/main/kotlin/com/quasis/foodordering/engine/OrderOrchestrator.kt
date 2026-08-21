@@ -104,7 +104,7 @@ object OrderOrchestrator {
 
             // Step 1: LAUNCH_APP -> give it time to load splash & UI
             if (step.step_type == StepType.LAUNCH_APP) {
-                val launchResult = executor.execute(step, service.rootInActiveWindow)
+                val launchResult = executor.execute(step, service.getActiveRoot())
                 if (!launchResult.success && step.is_critical) {
                     abortCurrentExecution("Failed at Step 1 (LAUNCH_APP): ${launchResult.message}")
                     return
@@ -127,7 +127,7 @@ object OrderOrchestrator {
             var lastResult: StepExecutionResultDto? = null
 
             while (System.currentTimeMillis() - startTime < timeoutMs) {
-                val rootNode = service.rootInActiveWindow
+                val rootNode = service.getActiveRoot()
                 val result = executor.execute(step, rootNode)
                 lastResult = result
 

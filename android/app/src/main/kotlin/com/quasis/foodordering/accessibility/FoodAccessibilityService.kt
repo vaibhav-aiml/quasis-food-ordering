@@ -3,6 +3,8 @@ package com.quasis.foodordering.accessibility
 import android.accessibilityservice.AccessibilityService
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import com.quasis.foodordering.engine.OrderOrchestrator
 
 /**
@@ -28,9 +30,20 @@ class FoodAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
-        // Forward event / screen state update to orchestrator if an automation plan is active
-        val rootNode = rootInActiveWindow
+        val rootNode = getActiveRoot()
         OrderOrchestrator.onAccessibilityEventReceived(event, rootNode)
+    }
+
+    fun getActiveRoot(): AccessibilityNodeInfo? {
+        val root = rootInActiveWindow
+        if (root != null) return root
+
+        return try {
+            windows?.firstOrNull { it.isFocused || it.type == AccessibilityWindowInfo.TYPE_APPLICATION }?.root
+                ?: windows?.firstOrNull()?.root
+        } catch (e: Exception) {
+            null
+        }
     }
 
     override fun onInterrupt() {
