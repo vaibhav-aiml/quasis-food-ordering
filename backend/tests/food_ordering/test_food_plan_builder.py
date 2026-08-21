@@ -159,3 +159,41 @@ def test_food_planner_agent_returns_unready_on_clarification() -> None:
     assert result.ready_to_automate is False
     assert result.plan is None
     assert "No specific" in result.status_message or "specific restaurant or dish" in result.status_message
+
+
+def test_build_plan_saravana_bhavan_masala_dosa() -> None:
+    intent = FoodOrderIntent(
+        raw_text="Order 2 masala dosa from Saravana Bhavan",
+        restaurant_name="Saravana Bhavan",
+        items=[
+            FoodItemRequest(name="masala dosa", quantity=2)
+        ],
+        target_app="swiggy",
+        confidence=0.95,
+    )
+
+    builder = FoodPlanBuilder()
+    plan = builder.build_plan(intent)
+
+    assert plan.target_app == "swiggy"
+    assert plan.restaurant_name == "Saravana Bhavan"
+    assert len(plan.items) == 1
+    assert plan.items[0].quantity == 2
+    assert plan.stop_before_payment is True
+
+    step_types = [s.step_type for s in plan.steps]
+    expected_types = [
+        ExecutionStepType.LAUNCH_APP,
+        ExecutionStepType.SEARCH_RESTAURANT,
+        ExecutionStepType.SELECT_RESTAURANT,
+        ExecutionStepType.SEARCH_MENU_ITEM,
+        ExecutionStepType.SELECT_ITEM,
+        ExecutionStepType.ADD_TO_CART,
+        ExecutionStepType.VIEW_CART,
+        ExecutionStepType.PROCEED_TO_CHECKOUT,
+        ExecutionStepType.STOP_FOR_PAYMENT,
+    ]
+    assert step_types == expected_types
+    assert plan.steps[4].parameters["quantity"] == 2
+    assert plan.steps[-1].step_type == ExecutionStepType.STOP_FOR_PAYMENT
+

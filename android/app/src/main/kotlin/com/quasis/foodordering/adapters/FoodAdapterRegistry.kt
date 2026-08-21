@@ -7,6 +7,11 @@ object FoodAdapterRegistry {
 
     private val adapters = mutableMapOf<String, FoodAppAdapter>()
 
+    init {
+        val swiggy = SwiggyAdapter()
+        register(swiggy)
+    }
+
     fun register(adapter: FoodAppAdapter) {
         adapters[adapter.appId.lowercase()] = adapter
         adapters[adapter.appName.lowercase()] = adapter
@@ -18,3 +23,4 @@ object FoodAdapterRegistry {
 
     fun supportedApps(): List<String> = adapters.keys.toList()
 }
+
