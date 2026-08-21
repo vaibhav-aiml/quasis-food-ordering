@@ -28,6 +28,7 @@ class StepExecutor(
     }
 
     private var searchPhase = 0
+    private var addPhase = 0
 
     fun execute(step: OrderStepDto, rootNode: AccessibilityNodeInfo?): StepExecutionResultDto {
         val currentScreen = ScreenStateDetector.detectScreen(rootNode)
@@ -66,6 +67,7 @@ class StepExecutor(
 
     fun resetSearchState() {
         searchPhase = 0
+        addPhase = 0
     }
 
     fun prepareSearchScreen() {
@@ -213,12 +215,6 @@ class StepExecutor(
             return ok(step, screen, "Found '$itemName' on menu")
         }
 
-        val addButtons = NodeHierarchyScanner.findNodesByText(swiggyRoot, "add", exactMatch = false) +
-                NodeHierarchyScanner.findNodesByText(swiggyRoot, "+", exactMatch = true)
-        if (addButtons.isNotEmpty()) {
-            return ok(step, screen, "Menu items visible for selection")
-        }
-
         return ok(step, screen, "Ready to select item '$itemName'")
     }
 
@@ -243,61 +239,85 @@ class StepExecutor(
     private fun executeAddToCart(step: OrderStepDto, screen: ScreenType): StepExecutionResultDto {
         val target = step.target_value ?: "Margherita"
         val swiggyRoot = service.getAppRoot(SWIGGY_PKG) ?: return fail(step, screen, "Swiggy not loaded.")
+        val dm = service.resources.displayMetrics
 
-        // 1. Confirm any active customization bottom sheet / popup
+        // 1. Check if Cart bar is ALREADY visible (item already added!)
+        val allTexts = NodeHierarchyScanner.extractAllVisibleTexts(swiggyRoot).map { it.lowercase() }
+        if (allTexts.any { it.contains("view cart") || it.contains("item added") || it.contains("checkout") }) {
+            return ok(step, screen, "Item added! View Cart bar is visible.")
+        }
+
+        // 2. Confirm any active customization bottom sheet / popup
         val confirmButtons = NodeHierarchyScanner.findNodesByText(swiggyRoot, "add item", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(swiggyRoot, "continue", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(swiggyRoot, "repeat last", exactMatch = false) +
-                NodeHierarchyScanner.findNodesByText(swiggyRoot, "customise", exactMatch = false) +
+                NodeHierarchyScanner.findNodesByText(swiggyRoot, "done", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(swiggyRoot, "apply", exactMatch = false)
 
         if (confirmButtons.isNotEmpty()) {
             val btn = confirmButtons.firstOrNull { it.isClickable } ?: confirmButtons.first()
             GestureDispatcher.clickNode(btn, service)
+            // Also physical touch tap at bottom button area of bottom sheet
+            GestureDispatcher.clickAtCoordinates(service, dm.widthPixels / 2f, dm.heightPixels * 0.94f, 80L)
             return ok(step, screen, "Confirmed item on customization sheet.")
         }
 
-        // 2. Find Margherita Pizza node and tap its plus button
+        // 3. Multi-point tap on Margherita Pizza card and plus icon
         val dishNode = findBestMatchingNode(swiggyRoot, target)
         if (dishNode != null) {
             val bounds = Rect()
             dishNode.getBoundsInScreen(bounds)
             if (!bounds.isEmpty && bounds.left > 0) {
-                // Physical touch tap at the top-right corner of the dish card (where the white + box is)
-                val tapX = (bounds.left + bounds.width() * 0.85f).coerceAtLeast(10f)
-                val tapY = (bounds.top - bounds.height() * 1.5f).coerceAtLeast(10f)
-                GestureDispatcher.clickAtCoordinates(service, tapX, tapY, 80L)
-
-                // Also tap on the dish node itself to open its sheet
+                // Tap 1: Pizza image center (opens customization sheet / adds)
+                GestureDispatcher.clickAtCoordinates(service, bounds.centerX().toFloat(), bounds.top.toFloat() - 70f, 80L)
+                // Tap 2: Plus button at bottom-right of pizza image
+                GestureDispatcher.clickAtCoordinates(service, bounds.right.toFloat() - 15f, bounds.top.toFloat() - 35f, 80L)
+                // Tap 3: Text label itself
                 GestureDispatcher.clickNode(dishNode, service)
-                return ok(step, screen, "Tapped '+' for $target")
             }
         }
 
-        // 3. Directly tap the first recommended item's + button at fixed proportional screen coordinates
-        val dm = service.resources.displayMetrics
-        val plusX = dm.widthPixels * 0.285f // 28.5% from left
-        val plusY = dm.heightPixels * 0.615f // 61.5% from top
-        GestureDispatcher.clickAtCoordinates(service, plusX, plusY, 80L)
+        // 4. Fixed screen proportional taps on the first pizza card
+        // Plus button: x = 28.5%, y = 61.5%
+        GestureDispatcher.clickAtCoordinates(service, dm.widthPixels * 0.285f, dm.heightPixels * 0.615f, 90L)
+        // Pizza image center: x = 20.0%, y = 58.0%
+        GestureDispatcher.clickAtCoordinates(service, dm.widthPixels * 0.200f, dm.heightPixels * 0.580f, 90L)
 
-        // 4. Fallback: Click first visible "+" or "ADD" node
+        // 5. Also click any "+" or "ADD" nodes in the tree
         val addButtons = NodeHierarchyScanner.findNodesByText(swiggyRoot, "+", exactMatch = true) +
                 NodeHierarchyScanner.findNodesByText(swiggyRoot, "add", exactMatch = false)
 
-        if (addButtons.isNotEmpty()) {
-            val btn = addButtons.firstOrNull { it.isClickable } ?: addButtons.first()
+        for (btn in addButtons.take(2)) {
             GestureDispatcher.clickNode(btn, service)
-            return ok(step, screen, "Tapped 'ADD' for $target")
         }
 
-        return ok(step, screen, "Dispatched '+' touch for $target")
+        addPhase++
+        if (addPhase >= 2) {
+            // Also tap the bottom sheet confirm area just in case sheet opened
+            GestureDispatcher.clickAtCoordinates(service, dm.widthPixels / 2f, dm.heightPixels * 0.94f, 80L)
+            return ok(step, screen, "Added $target to cart.")
+        }
+
+        return fail(step, screen, "Tapping '+' to add $target...")
     }
 
     // ================== STEP 7: VIEW CART ==================
 
     private fun executeViewCart(step: OrderStepDto, screen: ScreenType): StepExecutionResultDto {
         val swiggyRoot = service.getAppRoot(SWIGGY_PKG) ?: return fail(step, screen, "Swiggy not loaded.")
+        val dm = service.resources.displayMetrics
 
+        // 1. Confirm any customization sheet if still showing
+        val confirmButtons = NodeHierarchyScanner.findNodesByText(swiggyRoot, "add item", exactMatch = false) +
+                NodeHierarchyScanner.findNodesByText(swiggyRoot, "continue", exactMatch = false) +
+                NodeHierarchyScanner.findNodesByText(swiggyRoot, "done", exactMatch = false)
+        if (confirmButtons.isNotEmpty()) {
+            val btn = confirmButtons.firstOrNull { it.isClickable } ?: confirmButtons.first()
+            GestureDispatcher.clickNode(btn, service)
+            GestureDispatcher.clickAtCoordinates(service, dm.widthPixels / 2f, dm.heightPixels * 0.94f, 80L)
+        }
+
+        // 2. Click View Cart button
         val cartButtons = NodeHierarchyScanner.findNodesByText(swiggyRoot, "view cart", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(swiggyRoot, "cart", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(swiggyRoot, "checkout", exactMatch = false) +
@@ -307,16 +327,13 @@ class StepExecutor(
         if (cartButtons.isNotEmpty()) {
             val btn = cartButtons.firstOrNull { it.isClickable } ?: cartButtons.first()
             GestureDispatcher.clickNode(btn, service)
-            return ok(step, screen, "Navigated to Cart / Checkout")
         }
 
-        // Also tap at bottom floating cart bar area
-        val dm = service.resources.displayMetrics
-        val cartX = dm.widthPixels / 2f
-        val cartY = dm.heightPixels * 0.93f
-        GestureDispatcher.clickAtCoordinates(service, cartX, cartY, 80L)
+        // 3. Physical touch tap across the bottom floating cart bar area
+        GestureDispatcher.clickAtCoordinates(service, dm.widthPixels / 2f, dm.heightPixels * 0.93f, 80L)
+        GestureDispatcher.clickAtCoordinates(service, dm.widthPixels * 0.85f, dm.heightPixels * 0.93f, 80L)
 
-        return ok(step, screen, "Navigated to Cart")
+        return ok(step, screen, "Navigated to Cart / Checkout")
     }
 
     // ================== CUSTOMIZATION ==================
