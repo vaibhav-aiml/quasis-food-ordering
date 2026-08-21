@@ -14,23 +14,13 @@ instead of monkeypatching globals.
 
 import logging
 from functools import lru_cache
+from typing import Any
 
-from app.grocery.adapters.base import StoreAdapter
-from app.grocery.adapters.blinkit.adapter import BlinkitAdapter
-from app.grocery.adapters.blinkit.appium_adapter import BlinkitAppiumAdapter
-from app.grocery.adapters.instamart.adapter import InstamartAdapter
-from app.grocery.adapters.instamart.appium_adapter import InstamartAppiumAdapter
-from app.grocery.adapters.zepto.adapter import ZeptoAdapter
-from app.grocery.adapters.zepto.appium_adapter import ZeptoAppiumAdapter
-from app.grocery.agents.intent_agent import IntentUnderstandingAgent
-from app.grocery.agents.recommendation_agent import RecommendationGenerator
-from app.grocery.automation.driver_manager import DriverManager
 from app.core.config import Settings, get_settings as _get_settings
 from app.core.llm.client import LLMClient, OllamaLLMClient
 from app.core.llm.prompts import PromptManager
 from app.core.llm.structured import StructuredLLMService
 from app.core.logging import get_logger as _get_logger
-from app.grocery.graph.workflow import build_graph
 
 # Re-exported so `from app.core.dependencies import get_settings` is the
 # single import call sites need — they don't need to know it actually
@@ -82,25 +72,27 @@ def get_structured_llm_service() -> StructuredLLMService:
 
 
 @lru_cache
-def get_intent_agent() -> IntentUnderstandingAgent:
+def get_intent_agent():
     """Dependency providing the Intent Understanding Agent.
 
     Depends on ``get_structured_llm_service()`` — not the raw LLM client —
     since the agent has no business handling retries/validation itself;
     that's already the structured service's job.
     """
+    from app.grocery.agents.intent_agent import IntentUnderstandingAgent
 
     return IntentUnderstandingAgent(get_structured_llm_service())
 
 
 @lru_cache
-def get_recommendation_generator() -> RecommendationGenerator:
+def get_recommendation_generator():
     """Dependency providing the Recommendation Generator.
 
     Same rationale as ``get_intent_agent()`` — depends on the structured
     service, not the raw LLM client, since retry/validation is already
     handled there.
     """
+    from app.grocery.agents.recommendation_agent import RecommendationGenerator
 
     return RecommendationGenerator(get_structured_llm_service())
 
@@ -124,6 +116,7 @@ def get_shopping_graph(settings: Settings | None = None):
     device needed) — swaps to real Appium-backed adapters when configured
     in settings (e.g. STORE_MODE=real or BLINKIT_STORE_MODE=real).
     """
+    from app.grocery.graph.workflow import build_graph
 
     s = settings or get_settings()
     return build_graph(
@@ -152,7 +145,7 @@ def get_shopping_graph_dependency():
     return get_shopping_graph()
 
 
-def create_driver_manager(settings: Settings | None = None) -> DriverManager:
+def create_driver_manager(settings: Settings | None = None) -> Any:
     """Factory (deliberately NOT ``@lru_cache``'d) for a fresh
     ``DriverManager``.
 
@@ -161,32 +154,40 @@ def create_driver_manager(settings: Settings | None = None) -> DriverManager:
     Appium session, and each Store Adapter (Phase 7+) needs its own.
     Callers get a new, unstarted manager every call.
     """
+    from app.grocery.automation.driver_manager import DriverManager
 
     return DriverManager(settings or get_settings())
 
 
 @lru_cache
-def get_zepto_adapter() -> ZeptoAdapter:
+def get_zepto_adapter() -> Any:
+    from app.grocery.adapters.zepto.adapter import ZeptoAdapter
+
     return ZeptoAdapter()
 
 
 @lru_cache
-def get_blinkit_adapter() -> BlinkitAdapter:
+def get_blinkit_adapter() -> Any:
+    from app.grocery.adapters.blinkit.adapter import BlinkitAdapter
+
     return BlinkitAdapter()
 
 
 @lru_cache
-def get_instamart_adapter() -> InstamartAdapter:
+def get_instamart_adapter() -> Any:
+    from app.grocery.adapters.instamart.adapter import InstamartAdapter
+
     return InstamartAdapter()
 
 
-def get_all_store_adapters(settings: Settings | None = None) -> tuple[StoreAdapter, ...]:
+def get_all_store_adapters(settings: Settings | None = None) -> tuple[Any, ...]:
     """All supported store adapters, selected dynamically based on configuration.
 
     By default, returns mock adapters for all stores (deterministic, fast,
     no real device needed). When real mode is enabled for a store (e.g.,
     BLINKIT_STORE_MODE=real), instantiates its real Appium adapter.
     """
+    from app.grocery.adapters.base import StoreAdapter
 
     s = settings or get_settings()
     blinkit: StoreAdapter = (
@@ -208,8 +209,8 @@ def get_all_store_adapters(settings: Settings | None = None) -> tuple[StoreAdapt
 
 
 def create_zepto_appium_adapter(
-    settings: Settings | None = None, driver_manager: DriverManager | None = None
-) -> ZeptoAppiumAdapter:
+    settings: Settings | None = None, driver_manager: Any | None = None
+) -> Any:
     """Factory for a real, Appium-backed Zepto adapter.
 
     Deliberately NOT ``@lru_cache``'d — same reasoning as
@@ -221,28 +222,60 @@ def create_zepto_appium_adapter(
     unverified placeholder locator values — see Phase 8 docs before
     expecting this to work against the real app.
     """
+    from app.grocery.adapters.zepto.appium_adapter import ZeptoAppiumAdapter
 
     return ZeptoAppiumAdapter(settings or get_settings(), driver_manager)
 
 
 def create_blinkit_appium_adapter(
-    settings: Settings | None = None, driver_manager: DriverManager | None = None
-) -> BlinkitAppiumAdapter:
+    settings: Settings | None = None, driver_manager: Any | None = None
+) -> Any:
     """Factory for a real, Appium-backed Blinkit adapter. See
     ``create_zepto_appium_adapter`` for the caching rationale.
     """
+    from app.grocery.adapters.blinkit.appium_adapter import BlinkitAppiumAdapter
 
     return BlinkitAppiumAdapter(settings or get_settings(), driver_manager)
 
 
 def create_instamart_appium_adapter(
-    settings: Settings | None = None, driver_manager: DriverManager | None = None
-) -> InstamartAppiumAdapter:
+    settings: Settings | None = None, driver_manager: Any | None = None
+) -> Any:
     """Factory for a real, Appium-backed Instamart adapter. See
     ``create_zepto_appium_adapter`` for the caching rationale.
     """
+    from app.grocery.adapters.instamart.appium_adapter import InstamartAppiumAdapter
 
     return InstamartAppiumAdapter(settings or get_settings(), driver_manager)
+
+
+# --------------------------------------------------------------------------
+# Food Ordering Dependencies
+# --------------------------------------------------------------------------
+
+
+@lru_cache
+def get_food_intent_agent():
+    """Dependency providing the Food Ordering Intent Agent."""
+    from app.food_ordering.agents.food_intent_agent import FoodIntentAgent
+
+    return FoodIntentAgent(get_structured_llm_service())
+
+
+@lru_cache
+def get_food_plan_builder():
+    """Dependency providing the Food Ordering Plan Builder."""
+    from app.food_ordering.services.plan_builder import FoodPlanBuilder
+
+    return FoodPlanBuilder()
+
+
+@lru_cache
+def get_food_planner_agent():
+    """Dependency providing the Food Ordering Planner Agent."""
+    from app.food_ordering.agents.food_planner_agent import FoodPlannerAgent
+
+    return FoodPlannerAgent(get_food_intent_agent(), get_food_plan_builder())
 
 
 __all__ = [
@@ -264,4 +297,7 @@ __all__ = [
     "create_zepto_appium_adapter",
     "create_blinkit_appium_adapter",
     "create_instamart_appium_adapter",
+    "get_food_intent_agent",
+    "get_food_plan_builder",
+    "get_food_planner_agent",
 ]

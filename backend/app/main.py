@@ -12,7 +12,6 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 
-from app.grocery.api.v1.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger, setup_logging
 
@@ -55,7 +54,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings is not None:
         app.dependency_overrides[get_settings] = lambda: resolved_settings
 
-    app.include_router(api_router, prefix="/v1")
+    try:
+        from app.grocery.api.v1.router import api_router as grocery_router
+        app.include_router(grocery_router, prefix="/v1")
+    except ImportError:
+        pass
+
+    from app.food_ordering.api.router import food_router
+    app.include_router(food_router, prefix="/v1/food")
 
     return app
 
