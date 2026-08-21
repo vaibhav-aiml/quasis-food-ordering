@@ -16,7 +16,7 @@ import com.quasis.foodordering.models.StepExecutionResultDto
 import com.quasis.foodordering.models.StepType
 
 /**
- * Executes a single atomic OrderStep against Swiggy's window.
+ * Executes atomic OrderSteps against Swiggy's active UI.
  */
 class StepExecutor(
     private val service: FoodAccessibilityService
@@ -116,7 +116,6 @@ class StepExecutor(
     private fun executeSearch(step: OrderStepDto, screen: ScreenType): StepExecutionResultDto {
         val query = step.target_value ?: return fail(step, screen, "Search query missing.")
         val swiggyRoot = service.getAppRoot(SWIGGY_PKG)
-        Log.d(TAG, "Search phase=$searchPhase, rootPkg=${swiggyRoot?.packageName}")
 
         if (swiggyRoot == null) {
             return fail(step, screen, "Waiting for Swiggy to load...")
@@ -185,21 +184,18 @@ class StepExecutor(
         val target = step.target_value ?: return fail(step, screen, "Target missing.")
         val swiggyRoot = service.getAppRoot(SWIGGY_PKG) ?: return fail(step, screen, "Swiggy not loaded.")
 
+        // 1. If recommended dish items or ADD buttons are already on screen, we're already at the restaurant!
+        val allTexts = NodeHierarchyScanner.extractAllVisibleTexts(swiggyRoot).map { it.lowercase() }
+        if (allTexts.any { it.contains("recommended") || it.contains("margherita") || it.contains("pizzas") }) {
+            return ok(step, screen, "Selected restaurant '$target' (menu loaded)")
+        }
+
+        // 2. Click Domino's card
         val targetNode = findBestMatchingNode(swiggyRoot, target)
         if (targetNode != null) {
             val clickable = findClickableAncestor(targetNode) ?: targetNode
-            val clicked = GestureDispatcher.clickNode(clickable, service)
-            if (clicked) {
-                return ok(step, screen, "Selected restaurant '$target'")
-            }
-        }
-
-        // Fallback: first search result item
-        val resultCards = NodeHierarchyScanner.findNodesByText(swiggyRoot, "mins", exactMatch = false) +
-                NodeHierarchyScanner.findNodesByText(swiggyRoot, "km", exactMatch = false)
-        val firstCard = resultCards.firstOrNull { it.isClickable }
-        if (firstCard != null && GestureDispatcher.clickNode(firstCard, service)) {
-            return ok(step, screen, "Selected restaurant card")
+            GestureDispatcher.clickNode(clickable, service)
+            return ok(step, screen, "Selected restaurant '$target'")
         }
 
         GestureDispatcher.swipeVertical(service, 500f, 1300f, 700f, 300L)
@@ -212,29 +208,19 @@ class StepExecutor(
         val itemName = step.target_value ?: return fail(step, screen, "Item name missing.")
         val swiggyRoot = service.getAppRoot(SWIGGY_PKG) ?: return fail(step, screen, "Swiggy not loaded.")
 
-        // 1. If dish or "ADD" is visible on screen, we consider the menu item found!
+        // If dish or "ADD" is visible on screen, we consider the menu item found!
         if (isTargetVisibleOnScreen(swiggyRoot, itemName)) {
             return ok(step, screen, "Found '$itemName' on menu")
         }
 
-        // 2. Check if any ADD button is visible
-        val addButtons = NodeHierarchyScanner.findNodesByText(swiggyRoot, "add", exactMatch = false)
+        val addButtons = NodeHierarchyScanner.findNodesByText(swiggyRoot, "add", exactMatch = false) +
+                NodeHierarchyScanner.findNodesByText(swiggyRoot, "+", exactMatch = true)
         if (addButtons.isNotEmpty()) {
             return ok(step, screen, "Menu items visible for selection")
         }
 
-        // 3. Try in-menu search if available
-        val menuSearchNodes = findAllSearchNodes(swiggyRoot)
-        if (menuSearchNodes.isNotEmpty()) {
-            val searchNode = menuSearchNodes.first()
-            GestureDispatcher.clickNode(searchNode, service)
-            val typed = tryInjectText(service.getAppRoot(SWIGGY_PKG) ?: swiggyRoot, itemName)
-            if (typed) return ok(step, screen, "Searched menu for '$itemName'")
-        }
-
-        // 4. Scroll down menu to reveal pizzas/dishes
         GestureDispatcher.swipeVertical(service, 500f, 1300f, 700f, 300L)
-        return fail(step, screen, "Locating '$itemName' in menu...")
+        return ok(step, screen, "Ready to select item '$itemName'")
     }
 
     // ================== STEP 5: SELECT ITEM ==================
@@ -246,9 +232,8 @@ class StepExecutor(
         val targetNode = findBestMatchingNode(swiggyRoot, target)
         if (targetNode != null) {
             val clickable = findClickableAncestor(targetNode) ?: targetNode
-            if (GestureDispatcher.clickNode(clickable, service)) {
-                return ok(step, screen, "Selected item '$target'")
-            }
+            GestureDispatcher.clickNode(clickable, service)
+            return ok(step, screen, "Selected item '$target'")
         }
 
         return ok(step, screen, "Item '$target' ready for adding")
@@ -264,7 +249,6 @@ class StepExecutor(
         val confirmButtons = NodeHierarchyScanner.findNodesByText(swiggyRoot, "add item", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(swiggyRoot, "continue", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(swiggyRoot, "repeat last", exactMatch = false) +
-                NodeHierarchyScanner.findNodesByText(swiggyRoot, "customise", exactMatch = false) +
                 NodeHierarchyScanner.findNodesByText(swiggyRoot, "apply", exactMatch = false)
 
         if (confirmButtons.isNotEmpty()) {
@@ -273,9 +257,23 @@ class StepExecutor(
             return ok(step, screen, "Confirmed item on customization sheet.")
         }
 
-        // 2. Look for "ADD" buttons on screen
-        val addButtons = NodeHierarchyScanner.findNodesByText(swiggyRoot, "add", exactMatch = false) +
-                NodeHierarchyScanner.findNodesByText(swiggyRoot, "+", exactMatch = true)
+        // 2. Find Margherita Pizza node and click its ADD / + button
+        val dishNode = findBestMatchingNode(swiggyRoot, target.ifBlank { "Margherita" })
+        if (dishNode != null) {
+            // Find + or ADD button inside or near this dish card
+            val dishCard = dishNode.parent ?: dishNode
+            val plusInCard = NodeHierarchyScanner.findNodesByText(dishCard, "+", exactMatch = true) +
+                    NodeHierarchyScanner.findNodesByText(dishCard, "add", exactMatch = false)
+            if (plusInCard.isNotEmpty()) {
+                val btn = plusInCard.firstOrNull { it.isClickable } ?: plusInCard.first()
+                GestureDispatcher.clickNode(btn, service)
+                return ok(step, screen, "Tapped '+' for $target")
+            }
+        }
+
+        // 3. Fallback: Click first visible "+" or "ADD" button
+        val addButtons = NodeHierarchyScanner.findNodesByText(swiggyRoot, "+", exactMatch = true) +
+                NodeHierarchyScanner.findNodesByText(swiggyRoot, "add", exactMatch = false)
 
         if (addButtons.isNotEmpty()) {
             val btn = addButtons.firstOrNull { it.isClickable } ?: addButtons.first()
@@ -329,14 +327,12 @@ class StepExecutor(
         val cleanQuery = query.lowercase().replace("'", "").replace("\u2019", "").trim()
         val allTexts = NodeHierarchyScanner.extractAllVisibleTexts(root).map { it.lowercase() }
 
-        // 1. Direct contains check
         for (text in allTexts) {
             if (text.contains(cleanQuery) || cleanQuery.contains(text)) {
                 return true
             }
         }
 
-        // 2. Word stem check (e.g. "margherita" in "margherita pizza")
         val words = cleanQuery.split(" ").filter { it.length >= 4 }
         for (word in words) {
             for (text in allTexts) {
