@@ -4,7 +4,7 @@ API 1: POST /execute  — Start executing a plan on an Android device.
 API 2: GET  /status/{execution_id} — Check execution progress.
 """
 
-from typing import Annotated
+from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -20,6 +20,10 @@ class ExecuteRequest(BaseModel):
     plan_id: str = Field(min_length=1, description="ID of a previously generated OrderPlan.")
     device_id: str = Field(min_length=1, description="Target Android device identifier.")
     auto_execute: bool = Field(default=True, description="If True, execute steps automatically.")
+    engine: Literal["simulated", "uiautomator2"] = Field(
+        default="simulated",
+        description="Execution engine: 'simulated' for test runs or 'uiautomator2' for real Android device automation.",
+    )
 
 
 class ExecuteResponse(BaseModel):
@@ -56,11 +60,17 @@ def execute_order_plan(
     ``stop_before_payment=True`` will result in ``STOPPED_AT_PAYMENT``.
     """
     try:
-        session = service.start_execution(
-            plan_id=payload.plan_id,
-            device_id=payload.device_id,
-            auto_execute=payload.auto_execute,
-        )
+        if payload.engine == "uiautomator2":
+            session = service.execute_with_python_automation(
+                plan_id=payload.plan_id,
+                device_id=payload.device_id,
+            )
+        else:
+            session = service.start_execution(
+                plan_id=payload.plan_id,
+                device_id=payload.device_id,
+                auto_execute=payload.auto_execute,
+            )
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Plan '{payload.plan_id}' not found")
 

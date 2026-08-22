@@ -11,3 +11,5 @@ ollama>=0.3,<0.4
 Appium-Python-Client>=5.1,<6.0
 selenium>=4.26,<5.0
 python-dotenv>=1.0,<2.0
+uiautomator2>=3.0.0
+weditor>=0.2.0

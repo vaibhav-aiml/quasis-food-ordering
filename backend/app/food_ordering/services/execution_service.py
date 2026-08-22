@@ -112,6 +112,45 @@ class ExecutionService:
         )
         return session
 
+    def execute_with_python_automation(
+        self,
+        plan_id: str,
+        device_id: str | None = None,
+        device_instance: object | None = None,
+    ) -> ExecutionSession:
+        """Execute a plan using the real Python + uiautomator2 automation engine."""
+        from app.automation.orchestrator import execute_order_plan
+
+        plan = self._plan_store.get(plan_id)
+        if plan is None:
+            raise KeyError(f"Plan '{plan_id}' not found")
+
+        raw_result = execute_order_plan(
+            plan=plan,
+            device_serial=device_id,
+            device_instance=device_instance,
+        )
+
+        status_str = raw_result.get("status", "FAILED")
+        try:
+            status_enum = ExecutionStatus(status_str)
+        except ValueError:
+            status_enum = ExecutionStatus.FAILED
+
+        session = ExecutionSession(
+            execution_id=raw_result.get("execution_id", self._generate_id(plan_id)),
+            plan_id=plan_id,
+            device_id=device_id or "auto",
+            status=status_enum,
+            current_step=raw_result.get("current_step"),
+            steps_completed=raw_result.get("steps_completed", 0),
+            total_steps=raw_result.get("total_steps", len(plan.steps)),
+            result=raw_result.get("result"),
+            message=raw_result.get("message", ""),
+        )
+        self._store[session.execution_id] = session
+        return session
+
     def get_status(self, execution_id: str) -> ExecutionSession:
         """Retrieve the current state of an execution.
 
