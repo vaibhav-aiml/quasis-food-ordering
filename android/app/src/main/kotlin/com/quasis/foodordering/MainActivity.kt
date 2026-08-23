@@ -112,6 +112,18 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
+            // Immediately launch Swiggy synchronously in direct response to user touch
+            // This guarantees Android/MIUI grants foreground window transition without background restrictions
+            try {
+                val launchIntent = packageManager.getLaunchIntentForPackage("in.swiggy.android")
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                    startActivity(launchIntent)
+                }
+            } catch (e: Exception) {
+                Log.w("MainActivity", "Direct touch launch failed", e)
+            }
+
             startAgentOrderFlow(prompt)
         }
     }
