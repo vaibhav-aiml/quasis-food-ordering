@@ -249,11 +249,24 @@ class StepExecutor(
             return fail(step, screen, "Tapping search bar to open search...")
         }
 
-        // Single deliberate tap on top search bar area (Y ~ 8.5% of screen height)
+        // Relative targeting: if favourites carousel is on screen, search bar is directly above it
         val dm = service.resources.displayMetrics
         val centerX = dm.widthPixels / 2f
-        GestureDispatcher.clickAtCoordinates(service, centerX, dm.heightPixels * 0.085f, 80L)
+        val favNodes = NodeHierarchyScanner.findNodesByResourceId(swiggyRoot, "favourite_ryl_root_layout")
+        var tapY = dm.heightPixels * 0.085f
+        if (favNodes.isNotEmpty()) {
+            var highestFav = dm.heightPixels
+            for (f in favNodes) {
+                val b = Rect()
+                f.getBoundsInScreen(b)
+                if (b.top in 10 until highestFav) highestFav = b.top
+            }
+            if (highestFav < dm.heightPixels && highestFav > 100) {
+                tapY = (highestFav - 70).toFloat().coerceAtLeast(dm.heightPixels * 0.07f)
+            }
+        }
 
+        GestureDispatcher.clickAtCoordinates(service, centerX, tapY, 80L)
         return fail(step, screen, "Opening search for '$query'...")
     }
 
@@ -261,6 +274,16 @@ class StepExecutor(
         val results = mutableListOf<AccessibilityNodeInfo>()
         val dm = service.resources.displayMetrics
         val screenHeight = dm.heightPixels
+
+        val favNodes = NodeHierarchyScanner.findNodesByResourceId(root, "favourite_ryl_root_layout")
+        var minFavTop = screenHeight
+        for (fav in favNodes) {
+            val b = Rect()
+            fav.getBoundsInScreen(b)
+            if (b.top in 10 until minFavTop) {
+                minFavTop = b.top
+            }
+        }
 
         fun traverse(node: AccessibilityNodeInfo?) {
             if (node == null) return
@@ -280,18 +303,28 @@ class StepExecutor(
                 val isExplicitSearch = id.contains("search") ||
                         text.contains("search") ||
                         desc.contains("search") ||
-                        text.contains("restaurants, groceries") ||
-                        desc.contains("restaurants, groceries")
+                        text.contains("restaurant") ||
+                        desc.contains("restaurant") ||
+                        text.contains("groceries") ||
+                        desc.contains("groceries") ||
+                        text.contains("dish") ||
+                        desc.contains("dish") ||
+                        text.contains("biryani") ||
+                        text.contains("pizza") ||
+                        text.contains("burger") ||
+                        text.contains("cake") ||
+                        text.contains("mind")
+
+                val bounds = Rect()
+                node.getBoundsInScreen(bounds)
 
                 if (isExplicitSearch && !node.isEditable && !cls.contains("EditText", ignoreCase = true)) {
                     results.add(node)
                 }
 
-                // Top search bar container (Y between 4% and 15% of screen) with search keyword or query id
-                val bounds = Rect()
-                node.getBoundsInScreen(bounds)
-                if (node.isClickable && bounds.height() > 0 && bounds.centerY() in (screenHeight * 0.04f).toInt()..(screenHeight * 0.15f).toInt()) {
-                    if (isExplicitSearch || id.contains("query") || id.contains("search_bar")) {
+                // Clickable container above favourites carousel in the top 25% of screen
+                if (node.isClickable && bounds.height() > 30 && bounds.bottom <= minFavTop && bounds.top < screenHeight * 0.25f) {
+                    if (isExplicitSearch || id.contains("query") || id.contains("bar") || id.contains("container") || bounds.width() > dm.widthPixels * 0.5f) {
                         results.add(node)
                     }
                 }
@@ -301,10 +334,12 @@ class StepExecutor(
         }
         traverse(root)
 
-        // Prioritize nodes that explicitly contain "search" text/desc
+        // Prioritize explicit search text, then wide clickable containers
         return results.distinct().sortedByDescending { n ->
             val txt = (n.text?.toString() ?: "") + " " + (n.contentDescription?.toString() ?: "")
-            if (txt.contains("search", ignoreCase = true)) 2 else 1
+            if (txt.contains("search", ignoreCase = true)) 3
+            else if (n.text?.isNotEmpty() == true) 2
+            else 1
         }
     }
 
@@ -680,10 +715,12 @@ class StepExecutor(
             fun describe(n: AccessibilityNodeInfo): String {
                 val id = n.viewIdResourceName?.substringAfterLast('/') ?: "-"
                 val cls = n.className?.toString()?.substringAfterLast('.') ?: "-"
-                val text = n.text?.toString()?.take(30)
-                val desc = n.contentDescription?.toString()?.take(30)
+                val text = n.text?.toString()?.take(25)
+                val desc = n.contentDescription?.toString()?.take(25)
                 val flags = (if (n.isClickable) "C" else "") + (if (n.isEditable) "E" else "")
-                return "[$cls${if (flags.isNotEmpty()) "($flags)" else ""}] id=$id txt=${text ?: desc ?: "-"}"
+                val b = Rect()
+                n.getBoundsInScreen(b)
+                return "[$cls${if (flags.isNotEmpty()) "($flags)" else ""}] id=$id txt=${text ?: desc ?: "-"} y=${b.centerY()}"
             }
 
             // Full dump to logcat for deep debugging on a computer.
@@ -693,16 +730,20 @@ class StepExecutor(
             }.forEach { Log.w(TAG, describe(it)) }
             Log.w(TAG, "---- END HIERARCHY DUMP ----")
 
-            // Short on-screen summary: relevant nodes first, then a handful of everything else.
+            // Short on-screen summary: relevant search nodes first, then top clickable elements sorted by Y
             val relevant = allNodes.filter { n ->
                 val hay = listOfNotNull(n.viewIdResourceName, n.text?.toString(), n.contentDescription?.toString())
                     .joinToString(" ").lowercase()
-                hay.contains("search") || n.isEditable
+                hay.contains("search") || n.isEditable || hay.contains("dish") || hay.contains("restaurant")
             }.distinct().take(6)
 
             val clickableWithText = allNodes.filter {
-                it.isClickable && (!it.text.isNullOrBlank() || !it.contentDescription.isNullOrBlank())
-            }.distinct().take(8)
+                it.isClickable && (!it.text.isNullOrBlank() || !it.contentDescription.isNullOrBlank() || it.viewIdResourceName != null)
+            }.distinct().sortedBy { n ->
+                val b = Rect()
+                n.getBoundsInScreen(b)
+                b.centerY()
+            }.take(10)
 
             val lines = mutableListOf("--- On-screen (pkg=${root.packageName?.toString()?.substringAfterLast('.') ?: "?"}) ---")
             if (relevant.isNotEmpty()) {
@@ -711,7 +752,7 @@ class StepExecutor(
             } else {
                 lines.add("Search-related: NONE FOUND")
             }
-            lines.add("Clickable elements:")
+            lines.add("Clickable elements (top-down):")
             clickableWithText.forEach { lines.add("  ${describe(it)}") }
 
             return lines.joinToString("\n")
