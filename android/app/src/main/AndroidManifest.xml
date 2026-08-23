@@ -11,6 +11,14 @@
         <intent>
             <action android:name="android.intent.action.MAIN" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="swiggy" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" android:host="www.swiggy.com" />
+        </intent>
     </queries>
 
     <application

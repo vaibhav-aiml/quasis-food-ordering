@@ -89,29 +89,65 @@ class StepExecutor(
         val packageName = step.parameters["package_name"]?.toString()
             ?.removeSurrounding("\"") ?: SWIGGY_PKG
 
+        // 1. Try standard package manager launch intent
         var launchIntent = service.packageManager.getLaunchIntentForPackage(packageName)
         if (launchIntent == null) {
-            val intent = Intent(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_LAUNCHER)
-                setPackage(packageName)
-            }
-            val matches = service.packageManager.queryIntentActivities(intent, 0)
-            if (matches.isNotEmpty()) {
-                val activityInfo = matches[0].activityInfo
-                launchIntent = Intent(Intent.ACTION_MAIN).apply {
-                    setClassName(activityInfo.packageName, activityInfo.name)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                val intent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                    setPackage(packageName)
                 }
+                val matches = service.packageManager.queryIntentActivities(intent, 0)
+                if (matches.isNotEmpty()) {
+                    val activityInfo = matches[0].activityInfo
+                    launchIntent = Intent(Intent.ACTION_MAIN).apply {
+                        setClassName(activityInfo.packageName, activityInfo.name)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed querying launcher activities", e)
             }
         }
 
         if (launchIntent != null) {
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            service.startActivity(launchIntent)
-            return ok(step, ScreenType.UNKNOWN, "Launched package: $packageName")
+            try {
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                service.startActivity(launchIntent)
+                return ok(step, ScreenType.UNKNOWN, "Launched package: $packageName")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed starting launch intent", e)
+            }
         }
 
-        return fail(step, ScreenType.UNKNOWN, "Could not launch $packageName")
+        // 2. Try Deep Link (e.g. swiggy:// or https://www.swiggy.com)
+        val deepLinks = listOf(
+            "swiggy://explore",
+            "swiggy://home",
+            "swiggy://search",
+            "https://www.swiggy.com"
+        )
+        for (uriStr in deepLinks) {
+            try {
+                val deepLinkIntent = Intent(Intent.ACTION_VIEW, Uri.parse(uriStr)).apply {
+                    setPackage(packageName)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                service.startActivity(deepLinkIntent)
+                return ok(step, ScreenType.UNKNOWN, "Launched via deep link: $uriStr")
+            } catch (e: Exception) {
+                Log.w(TAG, "Deep link launch failed for $uriStr", e)
+            }
+        }
+
+        // 3. Fallback: check if Swiggy is already active or in foreground
+        val activeRoot = service.getActiveRoot()
+        val currentPkg = activeRoot?.packageName?.toString() ?: ""
+        if (currentPkg.contains("swiggy", ignoreCase = true) || service.getAppRoot(packageName) != null) {
+            return ok(step, ScreenType.UNKNOWN, "App already open in foreground: $packageName")
+        }
+
+        return fail(step, ScreenType.UNKNOWN, "Could not find launch intent for package: $packageName")
     }
 
     // ================== STEP 2: SEARCH RESTAURANT ==================

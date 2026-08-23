@@ -105,9 +105,15 @@ object OrderOrchestrator {
             // Step: LAUNCH_APP
             if (step.step_type == StepType.LAUNCH_APP) {
                 val launchResult = executor.execute(step, service.getActiveRoot())
-                if (!launchResult.success && step.is_critical) {
-                    abortCurrentExecution("Failed to open app: ${launchResult.message}")
-                    return
+                if (!launchResult.success) {
+                    val root = service.getActiveRoot()
+                    val pkg = root?.packageName?.toString() ?: ""
+                    if (pkg.contains("swiggy", ignoreCase = true) || service.getAppRoot("in.swiggy.android") != null) {
+                        Log.i(TAG, "Swiggy is already open on screen, proceeding...")
+                    } else if (step.is_critical) {
+                        abortCurrentExecution("Failed to open app: ${launchResult.message}")
+                        return
+                    }
                 }
                 val updatedState = currentState?.copy(
                     completed_steps = (currentState?.completed_steps ?: emptyList()) + launchResult

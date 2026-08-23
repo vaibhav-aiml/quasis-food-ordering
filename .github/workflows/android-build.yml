@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Android Build
 
 on:
   push:
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -31,7 +31,7 @@ jobs:
           yes | sdkmanager --licenses || true
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
@@ -43,7 +43,7 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: quasis-food-ordering-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: quasis-food-ordering-app
+          path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 7

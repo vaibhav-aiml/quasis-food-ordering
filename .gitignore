@@ -40,4 +40,6 @@ mobile/build/
 **/build/
 *.iml
 local.properties
+video_frames/
+video_frames_2/
 
