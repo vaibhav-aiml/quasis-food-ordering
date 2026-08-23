@@ -253,7 +253,7 @@ class StepExecutor(
         val dm = service.resources.displayMetrics
         val centerX = dm.widthPixels / 2f
         val favNodes = NodeHierarchyScanner.findNodesByResourceId(swiggyRoot, "favourite_ryl_root_layout")
-        var tapY = dm.heightPixels * 0.085f
+        var tapY = dm.heightPixels * 0.085f // Standard top search bar position
         if (favNodes.isNotEmpty()) {
             var highestFav = dm.heightPixels
             for (f in favNodes) {
@@ -262,7 +262,8 @@ class StepExecutor(
                 if (b.top in 10 until highestFav) highestFav = b.top
             }
             val offsetPx = (40 * dm.density).toInt()
-            if (highestFav < dm.heightPixels && highestFav > 100) {
+            // If favourites carousel is near the top (e.g. y < 45% of screen), search bar is directly above it
+            if (highestFav < dm.heightPixels * 0.45f && highestFav > 100) {
                 tapY = (highestFav - offsetPx).toFloat().coerceAtLeast(dm.heightPixels * 0.07f)
             }
         }
@@ -275,16 +276,6 @@ class StepExecutor(
         val results = mutableListOf<AccessibilityNodeInfo>()
         val dm = service.resources.displayMetrics
         val screenHeight = dm.heightPixels
-
-        val favNodes = NodeHierarchyScanner.findNodesByResourceId(root, "favourite_ryl_root_layout")
-        var minFavTop = screenHeight
-        for (fav in favNodes) {
-            val b = Rect()
-            fav.getBoundsInScreen(b)
-            if (b.top in 10 until minFavTop) {
-                minFavTop = b.top
-            }
-        }
 
         fun traverse(node: AccessibilityNodeInfo?) {
             if (node == null) return
@@ -315,9 +306,9 @@ class StepExecutor(
                     results.add(node)
                 }
 
-                // 2. Candidate containers strictly above favourites carousel in top 25% of screen
-                val isAboveFavourites = bounds.bottom <= minFavTop && bounds.top < screenHeight * 0.25f
-                if (isAboveFavourites && node.isClickable && bounds.height() > 30) {
+                // 2. Candidate containers in top 20% of screen (Y between 4% and 20%)
+                val isTopContainer = bounds.centerY() in (screenHeight * 0.04f).toInt()..(screenHeight * 0.20f).toInt()
+                if (isTopContainer && node.isClickable && bounds.height() > 30) {
                     val isPlaceholderHint = text.contains("dish") || desc.contains("dish") ||
                             text.contains("biryani") || text.contains("pizza") ||
                             text.contains("burger") || text.contains("mind") ||
@@ -704,7 +695,7 @@ class StepExecutor(
             val root = service.getAppRoot(SWIGGY_PKG) ?: service.getActiveRoot() ?: return ""
             val allNodes = mutableListOf<AccessibilityNodeInfo>()
             fun collect(node: AccessibilityNodeInfo?) {
-                if (node == null || allNodes.size > 300) return
+                if (node == null || allNodes.size > 1500) return
                 allNodes.add(node)
                 for (i in 0 until node.childCount) collect(node.getChild(i))
             }
@@ -713,37 +704,36 @@ class StepExecutor(
             fun describe(n: AccessibilityNodeInfo): String {
                 val id = n.viewIdResourceName?.substringAfterLast('/') ?: "-"
                 val cls = n.className?.toString()?.substringAfterLast('.') ?: "-"
-                val text = n.text?.toString()?.take(25)
-                val desc = n.contentDescription?.toString()?.take(25)
+                val text = n.text?.toString()?.take(20)
+                val desc = n.contentDescription?.toString()?.take(20)
                 val flags = (if (n.isClickable) "C" else "") + (if (n.isEditable) "E" else "")
                 val b = Rect()
                 n.getBoundsInScreen(b)
-                return "[$cls${if (flags.isNotEmpty()) "($flags)" else ""}] id=$id txt=${text ?: desc ?: "-"} y=${b.centerY()}"
+                val txtPart = if (text != null || desc != null) " txt=${text ?: desc}" else ""
+                return "[$cls${if (flags.isNotEmpty()) "($flags)" else ""}] id=$id$txtPart [${b.left},${b.top},${b.right},${b.bottom}] y=${b.centerY()}"
             }
 
-            // Full dump to logcat for deep debugging on a computer.
-            Log.w(TAG, "---- HIERARCHY DUMP (step=${step.step_type}, pkg=${root.packageName}) ----")
+            // Full dump to logcat for deep debugging
+            Log.w(TAG, "---- HIERARCHY DUMP (step=${step.step_type}, pkg=${root.packageName}, totalNodes=${allNodes.size}) ----")
             allNodes.filter {
-                !it.text.isNullOrBlank() || !it.contentDescription.isNullOrBlank() || it.viewIdResourceName != null
+                it.isClickable || !it.text.isNullOrBlank() || !it.contentDescription.isNullOrBlank() || it.viewIdResourceName != null
             }.forEach { Log.w(TAG, describe(it)) }
             Log.w(TAG, "---- END HIERARCHY DUMP ----")
 
-            // Short on-screen summary: relevant search nodes first, then top clickable elements sorted by Y
+            // Short on-screen summary: relevant search nodes first, then ALL top-down clickable elements
             val relevant = allNodes.filter { n ->
                 val hay = listOfNotNull(n.viewIdResourceName, n.text?.toString(), n.contentDescription?.toString())
                     .joinToString(" ").lowercase()
                 hay.contains("search") || n.isEditable || hay.contains("dish") || hay.contains("restaurant")
             }.distinct().take(6)
 
-            val clickableWithText = allNodes.filter {
-                it.isClickable && (!it.text.isNullOrBlank() || !it.contentDescription.isNullOrBlank() || it.viewIdResourceName != null)
-            }.distinct().sortedBy { n ->
+            val allClickables = allNodes.filter { it.isClickable }.distinct().sortedBy { n ->
                 val b = Rect()
                 n.getBoundsInScreen(b)
                 b.centerY()
-            }.take(10)
+            }.take(14)
 
-            val lines = mutableListOf("--- On-screen (pkg=${root.packageName?.toString()?.substringAfterLast('.') ?: "?"}) ---")
+            val lines = mutableListOf("--- On-screen (pkg=${root.packageName?.toString()?.substringAfterLast('.') ?: "?"}, nodes=${allNodes.size}) ---")
             if (relevant.isNotEmpty()) {
                 lines.add("Search-related:")
                 relevant.forEach { lines.add("  ${describe(it)}") }
@@ -751,7 +741,7 @@ class StepExecutor(
                 lines.add("Search-related: NONE FOUND")
             }
             lines.add("Clickable elements (top-down):")
-            clickableWithText.forEach { lines.add("  ${describe(it)}") }
+            allClickables.forEach { lines.add("  ${describe(it)}") }
 
             return lines.joinToString("\n")
         } catch (e: Exception) {
