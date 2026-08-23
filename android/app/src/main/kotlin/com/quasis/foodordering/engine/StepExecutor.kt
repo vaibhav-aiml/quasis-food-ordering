@@ -172,6 +172,20 @@ class StepExecutor(
         val packageName = step.parameters["package_name"]?.toString()
             ?.removeSurrounding("\"") ?: SWIGGY_PKG
 
+        // 1. Try launching direct search/explore URI into Swiggy
+        try {
+            val deepLinkIntent = Intent(Intent.ACTION_VIEW, Uri.parse("swiggy://explore")).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                setPackage(packageName)
+            }
+            if (deepLinkIntent.resolveActivity(service.packageManager) != null) {
+                service.startActivity(deepLinkIntent)
+                return ok(step, ScreenType.UNKNOWN, "Launched Swiggy directly to Search screen.")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Explore deep link fallback", e)
+        }
+
         val launchIntent = service.packageManager.getLaunchIntentForPackage(packageName)
         if (launchIntent != null) {
             try {
@@ -273,6 +287,17 @@ class StepExecutor(
             }
         }
         val searchTapX = dm.widthPixels * 0.42f
+
+        // Try direct deep link explore transition
+        try {
+            val exploreIntent = Intent(Intent.ACTION_VIEW, Uri.parse("swiggy://explore")).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                setPackage(SWIGGY_PKG)
+            }
+            if (exploreIntent.resolveActivity(service.packageManager) != null) {
+                service.startActivity(exploreIntent)
+            }
+        } catch (_: Exception) {}
 
         Log.i(TAG, "Tapping search bar at coordinates ($searchTapX, $searchTapY)...")
         GestureDispatcher.clickAtCoordinates(service, searchTapX, searchTapY, 120L)
