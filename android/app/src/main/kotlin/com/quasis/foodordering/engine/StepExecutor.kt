@@ -251,39 +251,52 @@ class StepExecutor(
 
         val dm = service.resources.displayMetrics
         val centerX = dm.widthPixels / 2f
-        GestureDispatcher.clickAtCoordinates(service, centerX, dm.heightPixels * 0.08f, 80L)
-        GestureDispatcher.clickAtCoordinates(service, centerX, dm.heightPixels * 0.11f, 80L)
+        // Top search bar center and right icon
+        GestureDispatcher.clickAtCoordinates(service, centerX, dm.heightPixels * 0.085f, 80L)
+        GestureDispatcher.clickAtCoordinates(service, centerX, dm.heightPixels * 0.12f, 80L)
+        GestureDispatcher.clickAtCoordinates(service, dm.widthPixels * 0.88f, dm.heightPixels * 0.085f, 80L)
+        // Bottom search tab (Swiggy bottom navigation bar)
         GestureDispatcher.clickAtCoordinates(service, dm.widthPixels * 0.38f, dm.heightPixels * 0.95f, 80L)
+        GestureDispatcher.clickAtCoordinates(service, dm.widthPixels * 0.50f, dm.heightPixels * 0.95f, 80L)
 
         return fail(step, screen, "Opening search for '$query'...")
     }
 
     private fun findHomeSearchNodes(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
         val results = mutableListOf<AccessibilityNodeInfo>()
-        val ids = listOf(
-            "in.swiggy.android:id/search_edit_text",
-            "in.swiggy.android:id/search_box",
-            "in.swiggy.android:id/tv_search",
-            "in.swiggy.android:id/search_bar",
-            "in.swiggy.android:id/search_hint_text",
-            "in.swiggy.android:id/search_icon",
-            "in.swiggy.android:id/tab_search"
-        )
-        for (id in ids) {
-            results.addAll(NodeHierarchyScanner.findNodesByResourceId(root, id))
-        }
-
-        val searchTexts = listOf("search for", "search for '", "search for dishes", "search for restaurant", "search")
-        for (txt in searchTexts) {
-            results.addAll(NodeHierarchyScanner.findNodesByText(root, txt, exactMatch = false))
-        }
+        val dm = service.resources.displayMetrics
+        val screenHeight = dm.heightPixels
 
         fun traverse(node: AccessibilityNodeInfo?) {
             if (node == null) return
+            val id = node.viewIdResourceName?.lowercase() ?: ""
+            val text = node.text?.toString()?.lowercase() ?: ""
             val desc = node.contentDescription?.toString()?.lowercase() ?: ""
-            if (desc.contains("search")) {
+            val cls = node.className?.toString() ?: ""
+
+            val isSearchRelated = id.contains("search") ||
+                    text.contains("search") ||
+                    desc.contains("search") ||
+                    text.contains("dish") ||
+                    desc.contains("dish") ||
+                    text.contains("groceries") ||
+                    desc.contains("groceries") ||
+                    text.contains("restaurant") ||
+                    desc.contains("restaurant")
+
+            if (isSearchRelated && !node.isEditable && !cls.contains("EditText", ignoreCase = true)) {
                 results.add(node)
             }
+
+            // Also check clickable top header bar containers (Y between 4% and 18% of screen)
+            val bounds = Rect()
+            node.getBoundsInScreen(bounds)
+            if (node.isClickable && bounds.height() > 0 && bounds.centerY() in (screenHeight * 0.04f).toInt()..(screenHeight * 0.18f).toInt()) {
+                if (isSearchRelated || id.contains("query") || id.contains("bar") || id.contains("header") || id.contains("icon")) {
+                    results.add(node)
+                }
+            }
+
             for (i in 0 until node.childCount) traverse(node.getChild(i))
         }
         traverse(root)
