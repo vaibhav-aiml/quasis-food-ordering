@@ -255,6 +255,7 @@ class StepExecutor(
         if (favNodes.isNotEmpty() && favNodes.any { val b = Rect(); it.getBoundsInScreen(b); b.top < dm.heightPixels * 0.40f }) {
             Log.d(TAG, "Home screen appears scrolled down — scrolling to top...")
             GestureDispatcher.swipeVertical(service, centerX, dm.heightPixels * 0.25f, dm.heightPixels * 0.75f, 250L)
+            return fail(step, screen, "Restoring home screen to top...")
         }
 
         // Calibrated from live Swiggy home screen layout:
