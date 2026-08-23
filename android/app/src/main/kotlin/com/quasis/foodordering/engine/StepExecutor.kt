@@ -249,26 +249,13 @@ class StepExecutor(
             return fail(step, screen, "Tapping search bar to open search...")
         }
 
-        // Relative targeting: if favourites carousel is on screen, search bar is directly above it
         val dm = service.resources.displayMetrics
-        val centerX = dm.widthPixels / 2f
-        val favNodes = NodeHierarchyScanner.findNodesByResourceId(swiggyRoot, "favourite_ryl_root_layout")
-        var tapY = dm.heightPixels * 0.085f // Standard top search bar position
-        if (favNodes.isNotEmpty()) {
-            var highestFav = dm.heightPixels
-            for (f in favNodes) {
-                val b = Rect()
-                f.getBoundsInScreen(b)
-                if (b.top in 10 until highestFav) highestFav = b.top
-            }
-            val offsetPx = (40 * dm.density).toInt()
-            // If favourites carousel is near the top (e.g. y < 45% of screen), search bar is directly above it
-            if (highestFav < dm.heightPixels * 0.45f && highestFav > 100) {
-                tapY = (highestFav - offsetPx).toFloat().coerceAtLeast(dm.heightPixels * 0.07f)
-            }
-        }
+        // Calibrated from live Swiggy home screen layout:
+        // Address (0-8%), Food/Instamart/Dineout tabs (9-18%), Search Box (22-26%)
+        val searchTapX = dm.widthPixels * 0.42f
+        val searchTapY = dm.heightPixels * 0.24f
 
-        GestureDispatcher.clickAtCoordinates(service, centerX, tapY, 80L)
+        GestureDispatcher.clickAtCoordinates(service, searchTapX, searchTapY, 120L)
         return fail(step, screen, "Opening search for '$query'...")
     }
 

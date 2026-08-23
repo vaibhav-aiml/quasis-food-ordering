@@ -83,41 +83,54 @@ class FoodAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Find root node for a specific package, strictly matching the active/focused target window.
-     * Never falls back to Quasis's own window or stale background windows.
+     * Find root node for a specific package, selecting the most complete window tree
+     * across all active windows for the target package.
      */
     fun getAppRoot(packageName: String): AccessibilityNodeInfo? {
-        // 1. Check true active window first
-        val active = rootInActiveWindow
-        val activePkg = active?.packageName?.toString() ?: ""
-        if (activePkg == packageName || activePkg.contains("swiggy", ignoreCase = true)) {
-            return active
-        }
+        val candidates = mutableListOf<AccessibilityNodeInfo>()
 
-        // 2. Check focused or top application windows in window manager
+        // 1. Check all windows from window manager
         try {
             val allWindows = windows ?: emptyList()
             for (window in allWindows) {
-                if (window.isFocused || window.type == AccessibilityWindowInfo.TYPE_APPLICATION) {
-                    val root = window.root ?: continue
-                    val pkg = root.packageName?.toString() ?: continue
-                    if (pkg == packageName || pkg.contains("swiggy", ignoreCase = true)) {
-                        return root
-                    }
+                val root = window.root ?: continue
+                val pkg = root.packageName?.toString() ?: continue
+                if (pkg == packageName || pkg.contains("swiggy", ignoreCase = true)) {
+                    candidates.add(root)
                 }
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error querying windows for $packageName", e)
         }
 
-        // 3. Check most recent accessibility event root if matching package
+        // 2. Check active window
+        val active = rootInActiveWindow
+        val activePkg = active?.packageName?.toString() ?: ""
+        if (activePkg == packageName || activePkg.contains("swiggy", ignoreCase = true)) {
+            if (active != null) candidates.add(active)
+        }
+
+        // 3. Check last event root
         val last = lastEventRoot
         val lastPkg = last?.packageName?.toString() ?: ""
         if (lastPkg == packageName || lastPkg.contains("swiggy", ignoreCase = true)) {
-            return last
+            if (last != null) candidates.add(last)
         }
 
-        return null
+        if (candidates.isEmpty()) return null
+
+        // Pick the candidate root that exposes the richest hierarchy
+        return candidates.maxByOrNull { countNodes(it) }
+    }
+
+    private fun countNodes(root: AccessibilityNodeInfo?): Int {
+        if (root == null) return 0
+        var count = 1
+        for (i in 0 until root.childCount) {
+            count += countNodes(root.getChild(i))
+            if (count > 250) break
+        }
+        return count
     }
 
 
