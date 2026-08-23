@@ -229,6 +229,28 @@ SWIGGY_LOCATORS: dict[str, list[dict[str, Any]]] = {
         {"resourceId": "in.swiggy.android:id/payment_header"},
         {"resourceId": "in.swiggy.android:id/payment_methods_container"},
     ],
+
+    # --- Restaurant Address / Subtitle ---
+    "restaurant_address": [
+        {"resourceId": "in.swiggy.android:id/restaurant_area_or_address"},
+        {"resourceId": "in.swiggy.android:id/tv_restaurant_area"},
+        {"resourceId": "in.swiggy.android:id/restaurant_subtitle"},
+        {"resourceId": "in.swiggy.android:id/tv_restaurant_address"},
+        {"resourceId": "in.swiggy.android:id/area_text"},
+        {"xpath": "//android.widget.TextView[contains(@resource-id, 'area') or contains(@resource-id, 'address') or contains(@resource-id, 'subtitle')]"},
+    ],
+    "search_results_container": [
+        {"resourceId": "in.swiggy.android:id/search_results_recycler_view"},
+        {"resourceId": "in.swiggy.android:id/search_results_container"},
+        {"textContains": "Showing results"},
+        {"textContains": "RESTAURANT"},
+        {"textContains": "Delivery"},
+    ],
+    "search_submit_button": [
+        {"resourceId": "in.swiggy.android:id/search_submit_button"},
+        {"descriptionContains": "Search"},
+        {"text": "Search"},
+    ],
 }
 
 

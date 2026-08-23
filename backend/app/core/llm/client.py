@@ -89,10 +89,10 @@ class OllamaLLMClient:
         content = messages[-1].get("content", "")
         raw_text = content.split("User Request:")[-1].strip() if "User Request:" in content else content
 
-        # Detect restaurant
+        # Detect restaurant (handle any restaurant name after 'from' or in known list)
         restaurant = ""
         known_restaurants = [
-            "Domino's", "Dominos", "Meghana Foods", "Saravana Bhavan",
+            "Domino's", "Dominos", "Meghana Foods", "Saravana Bhavan", "Bikanervala", "Haldiram's", "Haldirams",
             "Cafe Coffee Day", "Paradise Biryani", "McDonald's", "KFC",
             "Pizza Hut", "Subway", "Burger King", "Starbucks"
         ]
@@ -101,17 +101,19 @@ class OllamaLLMClient:
                 restaurant = r
                 break
         if not restaurant:
-            from_match = re.search(r"\bfrom\s+([A-Za-z0-9\s'\-]+?)(?:\s+on\b|\s+with\b|\s+in\b|$)", raw_text, re.IGNORECASE)
+            from_match = re.search(r"\bfrom\s+([^,.;\n]+?)(?:\s+on\b|\s+with\b|\s+in\b|[.,;]|$)", raw_text, re.IGNORECASE)
             if from_match:
-                restaurant = from_match.group(1).strip()
+                candidate = from_match.group(1).strip(" .,!?:;")
+                if candidate and candidate.lower() not in ("swiggy", "zomato", "blinkit", "zepto"):
+                    restaurant = candidate
 
         # Detect dishes
         items = []
         dish_patterns = [
-            r"(\d+)?\s*(margherita\s+pizza|pizza|farmhouse\s+pizza|chicken\s+biryani|mutton\s+biryani|paneer\s+biryani|biryani|masala\s+dosa|plain\s+dosa|dosa|idli\s+sambar|idli|filter\s+coffee|cappuccino|cold\s+coffee|coffee|burger|fries|sandwich)",
+            r"(\d+)?\s*(margherita\s+pizza|farmhouse\s+pizza|pizza|dal\s+kachori|kachori|chicken\s+biryani|mutton\s+biryani|paneer\s+biryani|biryani|masala\s+dosa|plain\s+dosa|dosa|idli\s+sambar|idli|filter\s+coffee|cappuccino|cold\s+coffee|coffee|burger|fries|sandwich|paneer\s+butter\s+masala|butter\s+chicken|chole\s+bhature|samosa|gulab\s+jamun|rasgulla)",
         ]
         for pat in dish_patterns:
-            matches = re.finditer(pat, raw_text, re.IGNORECASE)
+            matches = list(re.finditer(pat, raw_text, re.IGNORECASE))
             for m in matches:
                 qty_str = m.group(1)
                 qty = int(qty_str) if qty_str else 1
@@ -125,10 +127,11 @@ class OllamaLLMClient:
                 })
 
         # If no dishes found via pattern, extract words before "from" or after "order"
-        if not items and ("order" in raw_text.lower() or "get" in raw_text.lower()):
+        if not items and ("order" in raw_text.lower() or "get" in raw_text.lower() or "buy" in raw_text.lower()):
             clean = re.sub(r"^(order|get|buy|send)\s+", "", raw_text, flags=re.IGNORECASE)
             clean = re.sub(r"\s+from\s+.*$", "", clean, flags=re.IGNORECASE)
-            clean = re.sub(r"\s+on\s+.*$", "", clean, flags=re.IGNORECASE).strip()
+            clean = re.sub(r"\s+on\s+.*$", "", clean, flags=re.IGNORECASE)
+            clean = clean.strip(" .,!?:;")
             if clean:
                 items.append({
                     "name": clean.lower(),

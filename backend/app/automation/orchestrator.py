@@ -8,12 +8,14 @@ from typing import Any
 from app.automation.device_manager import connect_device, is_device_connected
 from app.automation.exceptions import (
     AutomationError,
+    ClarificationRequired,
     OrderExecutionCancelled,
     PaymentScreenSafetyHalt,
 )
-from app.automation.safety_guard import stop_before_payment
+from app.automation.safety_guard import is_payment_screen, stop_before_payment
 from app.automation.swiggy_flows import (
     add_to_cart,
+    detect_multiple_restaurants,
     launch_swiggy,
     proceed_to_checkout,
     search_menu_item,
@@ -114,6 +116,17 @@ def execute_order_plan(
 
             session["steps_completed"] = idx + 1
 
+        except ClarificationRequired as clarify_err:
+            logger.info("Clarification required at step '%s': %s", step_name, clarify_err.message)
+            session["status"] = ExecutionStatus.PAUSED_FOR_CLARIFICATION.value
+            session["result"] = "NEEDS_CLARIFICATION"
+            session["current_step"] = step_name
+            session["message"] = clarify_err.message
+            session["clarification_options"] = clarify_err.options
+            session["paused_at_step_index"] = idx
+            session["device_instance"] = d  # Keep device reference for resume
+            return session
+
         except PaymentScreenSafetyHalt as safety_err:
             logger.info("Payment safety halt caught: %s", safety_err)
             session["status"] = ExecutionStatus.READY_FOR_PAYMENT.value
@@ -135,10 +148,21 @@ def execute_order_plan(
     # 3. Final Milestone Resolution
     if plan.stop_before_payment:
         halt_info = stop_before_payment(d, plan_id=plan.plan_id)
-        session["status"] = ExecutionStatus.READY_FOR_PAYMENT.value
-        session["result"] = "STOPPED_AT_PAYMENT"
-        session["current_step"] = "STOP_FOR_PAYMENT"
-        session["message"] = halt_info.get("message", "Order ready for payment confirmation.")
+        actual_on_payment = halt_info.get("actual_on_payment_screen", False)
+        if actual_on_payment:
+            session["status"] = ExecutionStatus.READY_FOR_PAYMENT.value
+            session["result"] = "STOPPED_AT_PAYMENT"
+            session["current_step"] = "STOP_FOR_PAYMENT"
+            session["message"] = halt_info.get("message", "Order ready for payment confirmation.")
+        else:
+            # All steps completed but we're not actually at the payment screen
+            session["status"] = ExecutionStatus.READY_FOR_PAYMENT.value
+            session["result"] = "STOPPED_AT_PAYMENT"
+            session["current_step"] = "STOP_FOR_PAYMENT"
+            session["message"] = (
+                "All automation steps completed. "
+                "Please verify items in cart and proceed to payment on your device."
+            )
         session["screenshot_path"] = halt_info.get("screenshot_path")
     else:
         session["status"] = ExecutionStatus.COMPLETED.value
@@ -162,7 +186,13 @@ def _dispatch_step(d: Any, step: OrderStep, plan: OrderPlan) -> bool:
 
     if step_type == ExecutionStepType.SELECT_RESTAURANT:
         name = step.target_value or plan.restaurant_name or params.get("name", "")
-        return select_restaurant(d, restaurant_name=name)
+        restaurant_index = params.get("restaurant_index")
+        # Check for multiple matching restaurants first
+        try:
+            detect_multiple_restaurants(d, name)
+        except ClarificationRequired:
+            raise  # Let orchestrator handle the clarification flow
+        return select_restaurant(d, restaurant_name=name, restaurant_index=restaurant_index)
 
     if step_type == ExecutionStepType.SEARCH_MENU_ITEM:
         item = step.target_value or params.get("item_name", "")
@@ -228,3 +258,75 @@ def cancel_order(execution_id: str) -> bool:
     _EXECUTION_STORE[execution_id]["status"] = ExecutionStatus.FAILED.value
     _EXECUTION_STORE[execution_id]["result"] = "CANCELLED"
     return True
+
+
+def resume_execution(
+    execution_id: str,
+    selection_index: int,
+) -> dict[str, Any]:
+    """Resume a paused execution after user clarification.
+
+    Args:
+        execution_id: Unique execution identifier.
+        selection_index: Index of the user's selected option from clarification_options.
+
+    Returns:
+        Updated session dictionary.
+
+    Raises:
+        KeyError: If execution_id is not found.
+        ValueError: If execution is not in a paused state.
+    """
+    if execution_id not in _EXECUTION_STORE:
+        raise KeyError(f"Execution ID '{execution_id}' not found.")
+
+    session = _EXECUTION_STORE[execution_id]
+
+    if session.get("status") != ExecutionStatus.PAUSED_FOR_CLARIFICATION.value:
+        raise ValueError(f"Execution '{execution_id}' is not paused for clarification.")
+
+    paused_step_idx = session.get("paused_at_step_index")
+    d = session.get("device_instance")
+
+    if paused_step_idx is None or d is None:
+        session["status"] = ExecutionStatus.FAILED.value
+        session["result"] = "RESUME_FAILED"
+        session["message"] = "Cannot resume: missing device instance or step index."
+        return session
+
+    # Update the step parameters with the user's selection
+    options = session.get("clarification_options", [])
+    if selection_index < 0 or selection_index >= len(options):
+        session["status"] = ExecutionStatus.FAILED.value
+        session["result"] = "INVALID_SELECTION"
+        session["message"] = f"Invalid selection index {selection_index}. Available: {len(options)} options."
+        return session
+
+    selected = options[selection_index]
+    logger.info("Resuming execution %s with selection: %s", execution_id, selected)
+
+    # Clear clarification state
+    session["status"] = ExecutionStatus.IN_PROGRESS.value
+    session["result"] = None
+    session["message"] = f"Resuming with selection: {selected.get('display', selected.get('name', ''))}"
+    session.pop("clarification_options", None)
+    session.pop("paused_at_step_index", None)
+
+    # Get the plan to continue executing from the paused step
+    plan_id = session.get("plan_id")
+    # We need to re-import here to get the plan store
+    # For now, just select the restaurant directly and continue
+    try:
+        restaurant_name = selected.get("name", "")
+        restaurant_idx = selected.get("index", 0)
+        select_restaurant(d, restaurant_name=restaurant_name, restaurant_index=restaurant_idx)
+        session["steps_completed"] = paused_step_idx + 1
+        session["message"] = f"Selected restaurant: {selected.get('display', restaurant_name)}"
+        logger.info("Restaurant selection resumed successfully.")
+    except Exception as e:
+        logger.error("Failed to select restaurant after clarification: %s", e)
+        session["status"] = ExecutionStatus.FAILED.value
+        session["result"] = "RESUME_SELECTION_FAILED"
+        session["message"] = f"Failed to select restaurant: {e}"
+
+    return session

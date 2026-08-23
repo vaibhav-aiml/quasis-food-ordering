@@ -173,6 +173,29 @@ class MainActivity : AppCompatActivity() {
                 }
                 tvProgressLogs.text = stepLog
 
+                // Handle multiple restaurant clarification
+                if (state.status == ExecutionStatusDto.PAUSED_FOR_CLARIFICATION
+                    && state.needs_clarification
+                    && !state.clarification_options.isNullOrEmpty()
+                ) {
+                    progressBar.visibility = View.GONE
+                    tvProgressTitle.text = "🔍 Multiple locations found"
+                    tvProgressTitle.setTextColor(Color.parseColor("#F57C00"))
+
+                    val options = state.clarification_options.toTypedArray()
+                    android.app.AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Which restaurant location?")
+                        .setItems(options) { _, which ->
+                            tvProgressTitle.text = "🚀 Resuming automation..."
+                            tvProgressTitle.setTextColor(Color.parseColor("#333333"))
+                            progressBar.visibility = View.VISIBLE
+                            OrderOrchestrator.resumeWithSelection(which)
+                        }
+                        .setCancelable(false)
+                        .show()
+                    return@launch
+                }
+
                 if (state.status == ExecutionStatusDto.READY_FOR_PAYMENT || state.ready_for_payment) {
                     progressBar.visibility = View.GONE
                     tvProgressTitle.text = "🎉 Ready for Payment!"

@@ -213,26 +213,70 @@ def set_text(
         if elem is None:
             return False
 
+        # Click element first to ensure it has focus, then wait for keyboard/input
+        try:
+            if hasattr(elem, "click"):
+                elem.click()
+                time.sleep(0.5)
+        except Exception:
+            pass
+
         if clear and hasattr(elem, "clear_text"):
             try:
                 elem.clear_text()
             except Exception:
                 pass
 
+        text_set = False
+        # Strategy 1: Direct set_text
         if hasattr(elem, "set_text"):
-            elem.set_text(text)
-        elif hasattr(elem, "send_keys"):
-            elem.send_keys(text)
-        else:
-            # Fallback: click and use fastinput_ime or shell input
-            click_element(d, locator)
-            d.send_keys(text)
+            try:
+                elem.set_text(text)
+                text_set = True
+            except Exception as e:
+                logger.debug("set_text failed: %s", e)
+
+        # Strategy 2: send_keys on element
+        if not text_set and hasattr(elem, "send_keys"):
+            try:
+                elem.send_keys(text)
+                text_set = True
+            except Exception as e:
+                logger.debug("elem.send_keys failed: %s", e)
+
+        # Strategy 3: Device-level send_keys (uses fastinput_ime)
+        if not text_set:
+            try:
+                click_element(d, locator)
+                time.sleep(0.3)
+                d.send_keys(text)
+                text_set = True
+            except Exception as e:
+                logger.debug("d.send_keys fallback failed: %s", e)
+
+        # Strategy 4: Shell input text
+        if not text_set:
+            try:
+                d.shell(f"input text '{text}'")
+                text_set = True
+            except Exception as e:
+                logger.debug("shell input text failed: %s", e)
+
+        if not text_set:
+            logger.error("All text entry strategies failed for '%s'.", text)
+            return False
 
         logger.debug("Entered text '%s' into input field.", text)
 
         if press_enter:
             time.sleep(0.3)
+            # Try Enter key first, then Search key (keycode 84)
             press_key(d, "enter")
+            try:
+                if hasattr(d, "shell"):
+                    d.shell("input keyevent 84")
+            except Exception:
+                pass
 
         time.sleep(config.action_delay)
         return True
@@ -355,6 +399,67 @@ def get_element_text(
     except Exception:
         pass
     return None
+
+
+def get_all_matching_elements(
+    d: Any,
+    locator: str | dict[str, Any] | list[dict[str, Any]],
+    timeout: float = 3.0,
+    max_results: int = 10,
+) -> list[Any]:
+    """Find ALL UI elements matching a locator (not just the first one).
+
+    Args:
+        d: Connected uiautomator2 Device instance.
+        locator: Target locator.
+        timeout: Wait timeout per strategy.
+        max_results: Maximum number of results to return.
+
+    Returns:
+        List of matching UIObject elements.
+    """
+    strategies = _resolve_strategies(locator)
+    results: list[Any] = []
+    seen_bounds: set[tuple] = set()
+
+    for strategy in strategies:
+        try:
+            if "xpath" in strategy and hasattr(d, "xpath"):
+                xpath_results = d.xpath(strategy["xpath"]).all()
+                for elem in xpath_results:
+                    try:
+                        bounds = elem.bounds if hasattr(elem, "bounds") else None
+                        bounds_key = tuple(bounds) if bounds else id(elem)
+                        if bounds_key not in seen_bounds:
+                            seen_bounds.add(bounds_key)
+                            results.append(elem)
+                    except Exception:
+                        results.append(elem)
+            else:
+                selector = d(**strategy)
+                if hasattr(selector, "count"):
+                    count = selector.count
+                    if callable(count):
+                        count = count()
+                    for i in range(min(count, max_results)):
+                        try:
+                            child = selector[i] if hasattr(selector, "__getitem__") else selector
+                            results.append(child)
+                        except Exception:
+                            pass
+                elif hasattr(selector, "exists"):
+                    exists = selector.exists
+                    if callable(exists):
+                        exists = exists(timeout=1.0)
+                    if exists:
+                        results.append(selector)
+        except Exception as e:
+            logger.debug("get_all_matching_elements strategy %s failed: %s", strategy, e)
+
+        if len(results) >= max_results:
+            break
+
+    return results[:max_results]
 
 
 def press_key(d: Any, key: str) -> None:

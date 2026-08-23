@@ -63,3 +63,19 @@ class FlowExecutionError(AutomationError):
 class OrderExecutionCancelled(AutomationError):
     """Raised when an in-progress order execution is cancelled."""
     pass
+
+
+class ClarificationRequired(AutomationError):
+    """Raised when automation needs user clarification (e.g., multiple matching restaurants).
+
+    Carries the list of options so the orchestrator / UI can present them to the user.
+    """
+
+    def __init__(
+        self,
+        message: str = "User clarification required to continue.",
+        options: list[dict[str, Any]] | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, details)
+        self.options = options or []

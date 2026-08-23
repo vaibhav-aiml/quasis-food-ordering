@@ -8,6 +8,7 @@ and plan orchestration.
 from app.automation.actions import (
     click_element,
     find_element,
+    get_all_matching_elements,
     get_element_text,
     is_element_present,
     press_key,
@@ -28,6 +29,7 @@ from app.automation.device_manager import (
 from app.automation.exceptions import (
     ActionTimeoutError,
     AutomationError,
+    ClarificationRequired,
     DeviceConnectionError,
     DeviceNotFoundError,
     ElementNotFoundError,
@@ -41,6 +43,7 @@ from app.automation.orchestrator import (
     cancel_order,
     execute_order_plan,
     get_order_status,
+    resume_execution,
 )
 from app.automation.popup_handler import (
     dismiss_address_confirmation,
@@ -57,6 +60,7 @@ from app.automation.safety_guard import (
 )
 from app.automation.swiggy_flows import (
     add_to_cart,
+    detect_multiple_restaurants,
     launch_swiggy,
     proceed_to_checkout,
     search_menu_item,
@@ -70,6 +74,7 @@ __all__ = [
     "AutomationConfig",
     "get_automation_config",
     "AutomationError",
+    "ClarificationRequired",
     "DeviceConnectionError",
     "DeviceNotFoundError",
     "ElementNotFoundError",
@@ -94,6 +99,7 @@ __all__ = [
     "set_text",
     "scroll_to_element",
     "get_element_text",
+    "get_all_matching_elements",
     "swipe",
     "press_key",
     "take_screenshot",
@@ -112,6 +118,7 @@ __all__ = [
     "launch_swiggy",
     "search_restaurant",
     "select_restaurant",
+    "detect_multiple_restaurants",
     "search_menu_item",
     "add_to_cart",
     "view_cart",
@@ -120,4 +127,5 @@ __all__ = [
     "execute_order_plan",
     "get_order_status",
     "cancel_order",
+    "resume_execution",
 ]

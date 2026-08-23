@@ -24,3 +24,22 @@ def test_payment_safety_halt():
     assert isinstance(halt, AutomationError)
     assert halt.screenshot_path == "/path/to/shot.png"
     assert "Halted before payment" in str(halt)
+
+
+def test_clarification_required():
+    from app.automation.exceptions import ClarificationRequired
+
+    options = [
+        {"name": "Bikanervala", "address": "Indiranagar", "index": 0},
+        {"name": "Bikanervala", "address": "Koramangala", "index": 1},
+    ]
+    err = ClarificationRequired(
+        message="Multiple locations found",
+        options=options,
+        details={"restaurant_name": "Bikanervala"},
+    )
+    assert isinstance(err, AutomationError)
+    assert len(err.options) == 2
+    assert err.options[0]["address"] == "Indiranagar"
+    assert "Multiple locations found" in str(err)
+

@@ -47,26 +47,49 @@ def is_safe_to_click(element_text: str | None, element_desc: str | None = None) 
 def is_payment_screen(d: Any) -> bool:
     """Inspect current screen elements to determine if a payment or checkout screen is active.
 
+    Requires at least 2 payment indicators to be present to avoid false positives
+    from promotional banners or single keyword appearances.
+
     Args:
         d: Connected uiautomator2 Device instance.
 
     Returns:
         True if on a payment / final checkout screen, False otherwise.
     """
+    payment_indicator_count = 0
+
     try:
         # Check against payment screen locators
         if is_element_present(d, "payment_screen_indicators", timeout=1.0):
-            return True
+            payment_indicator_count += 1
 
         # Check dump hierarchy / page texts if accessible
         if hasattr(d, "xpath"):
-            for keyword in ["UPI", "Google Pay", "PhonePe", "Paytm", "Credit Card", "Debit Card", "Net Banking", "Payment Options"]:
-                if d.xpath(f"//*[contains(@text, '{keyword}')]").exists:
-                    return True
+            # Strong indicators — each match is worth 2 (immediate confirmation)
+            strong_keywords = ["Payment Options", "Select Payment Method", "Pay Now", "Proceed to Pay"]
+            for keyword in strong_keywords:
+                try:
+                    if d.xpath(f"//*[contains(@text, '{keyword}')]").exists:
+                        payment_indicator_count += 2
+                        break
+                except Exception:
+                    pass
+
+            # Weak indicators — need multiple to confirm
+            weak_keywords = ["UPI", "Google Pay", "PhonePe", "Paytm", "Credit Card", "Debit Card", "Net Banking"]
+            for keyword in weak_keywords:
+                try:
+                    if d.xpath(f"//*[contains(@text, '{keyword}')]").exists:
+                        payment_indicator_count += 1
+                except Exception:
+                    pass
     except Exception as e:
         logger.debug("Error checking payment screen indicators: %s", e)
 
-    return False
+    is_payment = payment_indicator_count >= 2
+    if is_payment:
+        logger.info("Payment screen detected (indicator score: %d)", payment_indicator_count)
+    return is_payment
 
 
 def verify_safety_boundary(d: Any, current_action: str = "unknown") -> None:
@@ -97,13 +120,18 @@ def stop_before_payment(d: Any, plan_id: str | None = None) -> dict[str, Any]:
         Dictionary summarizing safety stop state and takeover instructions.
     """
     screenshot_path = take_screenshot(d)
-    logger.info("Automation successfully halted at safety boundary. Ready for user payment.")
+    actual_on_payment = is_payment_screen(d)
+    logger.info(
+        "Automation halted at safety boundary. Actually on payment screen: %s. Ready for user payment.",
+        actual_on_payment,
+    )
 
     return {
         "status": "STOPPED_AT_PAYMENT",
         "plan_id": plan_id,
         "screenshot_path": screenshot_path,
         "human_takeover_required": True,
+        "actual_on_payment_screen": actual_on_payment,
         "message": (
             "Order is in cart / checkout screen with all requested items. "
             "Please review the cart and complete payment on your device."

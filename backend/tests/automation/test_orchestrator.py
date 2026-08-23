@@ -71,3 +71,51 @@ def test_cancel_order():
         status = get_order_status(exec_id)
         assert status["cancelled"] is True
         assert status["status"] == ExecutionStatus.FAILED.value
+
+
+def test_execute_order_plan_pauses_for_clarification():
+    from app.automation.exceptions import ClarificationRequired
+
+    mock_d = MagicMock()
+    plan = _create_sample_plan()
+
+    options = [
+        {"name": "Bikanervala", "address": "Indiranagar", "index": 0, "display": "Bikanervala - Indiranagar"},
+        {"name": "Bikanervala", "address": "Koramangala", "index": 1, "display": "Bikanervala - Koramangala"},
+    ]
+
+    with patch("app.automation.orchestrator._dispatch_step", side_effect=[
+        True,  # LAUNCH_APP
+        True,  # SEARCH_RESTAURANT
+        ClarificationRequired("Multiple locations found", options=options),  # SELECT_RESTAURANT
+    ]):
+        result = execute_order_plan(plan, device_instance=mock_d)
+        assert result["status"] == ExecutionStatus.PAUSED_FOR_CLARIFICATION.value
+        assert result["result"] == "NEEDS_CLARIFICATION"
+        assert len(result["clarification_options"]) == 2
+
+
+def test_resume_execution():
+    from app.automation.exceptions import ClarificationRequired
+    from app.automation.orchestrator import resume_execution
+
+    mock_d = MagicMock()
+    plan = _create_sample_plan()
+
+    options = [
+        {"name": "Bikanervala", "address": "Indiranagar", "index": 0, "display": "Bikanervala - Indiranagar"},
+        {"name": "Bikanervala", "address": "Koramangala", "index": 1, "display": "Bikanervala - Koramangala"},
+    ]
+
+    with patch("app.automation.orchestrator._dispatch_step", side_effect=[
+        True,  # LAUNCH_APP
+        True,  # SEARCH_RESTAURANT
+        ClarificationRequired("Multiple locations found", options=options),  # SELECT_RESTAURANT
+    ]):
+        result = execute_order_plan(plan, device_instance=mock_d)
+        exec_id = result["execution_id"]
+
+    with patch("app.automation.orchestrator.select_restaurant", return_value=True):
+        resumed = resume_execution(exec_id, selection_index=0)
+        assert resumed["status"] == ExecutionStatus.IN_PROGRESS.value
+        assert "Bikanervala - Indiranagar" in resumed["message"]

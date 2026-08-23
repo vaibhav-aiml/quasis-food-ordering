@@ -63,17 +63,43 @@ class SwiggyAdapter(
 
         // 2. Click search bar to focus
         SwiggyNodeActions.clickWithRetry(searchBar, service)
-        delay(400L)
+        delay(800L)  // Wait longer for search screen transition
 
-        // 3. Inject query text
-        val activeRoot = getRootNode()
-        val editableSearch = NodeHierarchyScanner.findNodesByText(activeRoot, "search")
-            .firstOrNull { it.isEditable } ?: searchBar
+        // 3. Wait for editable EditText to appear (up to 3s)
+        var editableNode: AccessibilityNodeInfo? = null
+        for (attempt in 1..6) {
+            val activeRoot = getRootNode()
+            if (activeRoot != null) {
+                editableNode = findEditableSearchNode(activeRoot)
+                if (editableNode != null) {
+                    Log.d(TAG, "Found editable search node on attempt $attempt")
+                    break
+                }
+            }
+            delay(500L)
+        }
 
-        val textSet = GestureDispatcher.setText(service, editableSearch, query)
+        if (editableNode == null) {
+            // Fallback: try any EditText on screen
+            Log.w(TAG, "No editable search node found after waiting. Trying fallback...")
+            val activeRoot = getRootNode()
+            editableNode = activeRoot?.let { findFirstEditText(it) } ?: searchBar
+        }
+
+        // 4. Inject query text
+        val textSet = GestureDispatcher.setText(service, editableNode, query)
         if (!textSet) {
             Log.e(TAG, "Failed to enter search query '$query' in search bar.")
             return false
+        }
+
+        // 5. Submit search - try pressing Enter/Search key
+        delay(300L)
+        try {
+            // Trigger IME search action
+            editableNode.performAction(AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY)
+        } catch (e: Exception) {
+            Log.d(TAG, "IME action failed, Swiggy uses live search anyway")
         }
 
         Log.d(TAG, "Search query '$query' entered. Waiting for search results screen...")
@@ -82,6 +108,42 @@ class SwiggyAdapter(
             timeoutMs = STEP_TIMEOUT_MS,
             rootSupplier = { getRootNode() }
         )
+    }
+
+    /**
+     * Find an editable node suitable for search text entry.
+     */
+    private fun findEditableSearchNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val candidates = mutableListOf<AccessibilityNodeInfo>()
+        fun traverse(node: AccessibilityNodeInfo?) {
+            if (node == null) return
+            val cls = node.className?.toString() ?: ""
+            val id = node.viewIdResourceName?.lowercase() ?: ""
+            if ((node.isEditable || cls.contains("EditText", ignoreCase = true)) &&
+                (id.contains("search") || id.contains("query") || id.contains("edit"))) {
+                candidates.add(node)
+            }
+            for (i in 0 until node.childCount) traverse(node.getChild(i))
+        }
+        traverse(root)
+        return candidates.firstOrNull()
+    }
+
+    /**
+     * Find any EditText node as a last resort.
+     */
+    private fun findFirstEditText(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        fun traverse(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+            if (node == null) return null
+            val cls = node.className?.toString() ?: ""
+            if (cls.contains("EditText", ignoreCase = true) || node.isEditable) return node
+            for (i in 0 until node.childCount) {
+                val found = traverse(node.getChild(i))
+                if (found != null) return found
+            }
+            return null
+        }
+        return traverse(root)
     }
 
     /**
@@ -116,6 +178,68 @@ class SwiggyAdapter(
             timeoutMs = STEP_TIMEOUT_MS,
             rootSupplier = { getRootNode() }
         )
+    }
+
+    /**
+     * Data class representing a restaurant option found in search results.
+     */
+    data class RestaurantOption(
+        val name: String,
+        val address: String,
+        val displayText: String,
+        val index: Int
+    )
+
+    /**
+     * Detect multiple restaurants matching the query in search results.
+     * Returns list of options if multiple are found, empty list if 0 or 1.
+     */
+    suspend fun findMatchingRestaurants(query: String): List<RestaurantOption> {
+        Log.i(TAG, "Checking for multiple restaurants matching: '$query'")
+        val rootNode = getRootNode() ?: return emptyList()
+
+        val matchingNodes = NodeHierarchyScanner.findNodesByText(rootNode, query, exactMatch = false)
+            .filter { node ->
+                val cls = node.className?.toString() ?: ""
+                cls.contains("TextView", ignoreCase = true) && !node.isEditable
+            }
+
+        if (matchingNodes.size <= 1) {
+            Log.d(TAG, "Found ${matchingNodes.size} matching restaurant(s). No disambiguation needed.")
+            return emptyList()
+        }
+
+        Log.i(TAG, "Found ${matchingNodes.size} restaurants matching '$query'")
+        return matchingNodes.mapIndexed { index, node ->
+            val name = node.text?.toString() ?: query
+            val address = extractAddressNearNode(node)
+            val display = if (address.isNotEmpty()) "$name - $address" else "$name (Option ${index + 1})"
+            RestaurantOption(name = name, address = address, displayText = display, index = index)
+        }
+    }
+
+    /**
+     * Extract address/locality text from nodes near a restaurant name.
+     */
+    private fun extractAddressNearNode(node: AccessibilityNodeInfo): String {
+        try {
+            val parent = node.parent ?: return ""
+            for (i in 0 until parent.childCount) {
+                val sibling = parent.getChild(i) ?: continue
+                if (sibling == node) continue
+                val text = sibling.text?.toString() ?: ""
+                val id = sibling.viewIdResourceName?.lowercase() ?: ""
+                if (id.contains("area") || id.contains("address") || id.contains("subtitle") || id.contains("location")) {
+                    return text
+                }
+                if (text.contains(",") || text.contains("nagar", ignoreCase = true) || text.contains("road", ignoreCase = true)) {
+                    return text
+                }
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "Address extraction failed: ${e.message}")
+        }
+        return ""
     }
 
     /**

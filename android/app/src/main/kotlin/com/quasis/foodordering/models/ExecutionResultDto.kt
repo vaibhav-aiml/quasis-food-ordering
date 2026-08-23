@@ -19,7 +19,8 @@ data class StepExecutionResultDto(
     val success: Boolean,
     val observed_screen: String? = null,
     val message: String? = null,
-    val screenshot_ref: String? = null
+    val screenshot_ref: String? = null,
+    val clarification_options: List<String>? = null
 )
 
 @Serializable
@@ -29,5 +30,8 @@ data class ExecutionStateDto(
     val status: ExecutionStatusDto = ExecutionStatusDto.PENDING,
     val completed_steps: List<StepExecutionResultDto> = emptyList(),
     val ready_for_payment: Boolean = false,
-    val error_message: String? = null
+    val error_message: String? = null,
+    val needs_clarification: Boolean = false,
+    val clarification_options: List<String>? = null
 )
+

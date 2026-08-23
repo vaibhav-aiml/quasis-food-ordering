@@ -93,3 +93,43 @@ def test_proceed_to_checkout_safely_halts_at_payment():
 
         result = proceed_to_checkout(mock_d, stop_at_payment=True)
         assert result["status"] == "STOPPED_AT_PAYMENT"
+
+
+def test_detect_multiple_restaurants_single_match():
+    from app.automation.swiggy_flows import detect_multiple_restaurants
+
+    mock_d = MagicMock()
+    mock_elem = MagicMock()
+    mock_elem.text = "Bikanervala"
+
+    with patch("app.automation.swiggy_flows.get_all_matching_elements", return_value=[mock_elem]):
+        results = detect_multiple_restaurants(mock_d, restaurant_name="Bikanervala")
+        assert results == []
+
+
+def test_detect_multiple_restaurants_raises_clarification():
+    from app.automation.exceptions import ClarificationRequired
+    from app.automation.swiggy_flows import detect_multiple_restaurants
+
+    mock_d = MagicMock()
+    mock_elem1 = MagicMock()
+    mock_elem1.text = "Bikanervala"
+    mock_elem2 = MagicMock()
+    mock_elem2.text = "Bikanervala"
+
+    with patch("app.automation.swiggy_flows.get_all_matching_elements", return_value=[mock_elem1, mock_elem2]):
+        with pytest.raises(ClarificationRequired) as exc_info:
+            detect_multiple_restaurants(mock_d, restaurant_name="Bikanervala")
+        assert len(exc_info.value.options) == 2
+
+
+def test_select_restaurant_with_index():
+    mock_d = MagicMock()
+    mock_elem1 = MagicMock()
+    mock_elem2 = MagicMock()
+
+    with patch("app.automation.swiggy_flows.get_all_matching_elements", return_value=[mock_elem1, mock_elem2]), \
+         patch("app.automation.swiggy_flows.handle_all_popups", return_value=0):
+        success = select_restaurant(mock_d, restaurant_name="Bikanervala", restaurant_index=1)
+        assert success is True
+        mock_elem2.click.assert_called_once()

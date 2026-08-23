@@ -6,6 +6,8 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.quasis.foodordering.accessibility.FoodAccessibilityService
+import com.quasis.foodordering.accessibility.GestureDispatcher
+import com.quasis.foodordering.accessibility.NodeHierarchyScanner
 import com.quasis.foodordering.models.ExecutionStateDto
 import com.quasis.foodordering.models.ExecutionStatusDto
 import com.quasis.foodordering.models.OrderPlanDto
@@ -14,6 +16,7 @@ import com.quasis.foodordering.models.StepType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -34,6 +37,17 @@ object OrderOrchestrator {
     private var currentState: ExecutionStateDto? = null
 
     var stateChangeListener: ((ExecutionStateDto) -> Unit)? = null
+
+    // Channel used to pause execution when user clarification is needed
+    private val clarificationChannel = Channel<Int>(Channel.CONFLATED)
+
+    /**
+     * Resume execution after user selects from clarification options.
+     */
+    fun resumeWithSelection(selectedIndex: Int) {
+        Log.i(TAG, "User selected option: $selectedIndex")
+        clarificationChannel.trySend(selectedIndex)
+    }
 
     /**
      * Start execution of a validated OrderPlan asynchronously.
@@ -156,6 +170,58 @@ object OrderOrchestrator {
                 val result = executor.execute(step, rootNode)
                 lastResult = result
 
+                // Check if step needs user clarification (multiple restaurants found)
+                if (!result.success && !result.clarification_options.isNullOrEmpty()) {
+                    Log.i(TAG, "Step ${step.step_id} needs clarification: ${result.clarification_options}")
+                    val clarificationState = stateBefore.copy(
+                        status = ExecutionStatusDto.PAUSED_FOR_CLARIFICATION,
+                        completed_steps = (currentState?.completed_steps ?: emptyList()) + result,
+                        needs_clarification = true,
+                        clarification_options = result.clarification_options
+                    )
+                    currentState = clarificationState
+                    notifyStateChange(clarificationState)
+
+                    // Wait for user selection via the channel
+                    val selectedIndex = clarificationChannel.receive()
+                    Log.i(TAG, "Received user selection: $selectedIndex")
+
+                    // Click the selected restaurant
+                    val freshRoot = service.getAppRoot("in.swiggy.android")
+                    if (freshRoot != null) {
+                        val matchingNodes = NodeHierarchyScanner.findNodesByText(freshRoot, step.target_value ?: "", exactMatch = false)
+                        if (selectedIndex < matchingNodes.size) {
+                            val selectedNode = matchingNodes[selectedIndex]
+                            val clickable = findClickableAncestor(selectedNode) ?: selectedNode
+                            GestureDispatcher.clickNode(clickable, service)
+                            delay(2000)
+                        }
+                    }
+
+                    // Resume with success
+                    val resumeResult = StepExecutionResultDto(
+                        step_id = step.step_id,
+                        step_type = step.step_type,
+                        success = true,
+                        message = "Selected option ${selectedIndex + 1} from clarification."
+                    )
+                    stepSuccess = true
+                    val updatedState = currentState?.copy(
+                        status = ExecutionStatusDto.IN_PROGRESS,
+                        needs_clarification = false,
+                        clarification_options = null,
+                        completed_steps = (currentState?.completed_steps ?: emptyList()) + resumeResult
+                    ) ?: return
+                    currentState = updatedState
+                    notifyStateChange(updatedState)
+
+                    when (step.step_type) {
+                        StepType.SELECT_RESTAURANT -> delay(3000)
+                        else -> delay(1500)
+                    }
+                    break
+                }
+
                 if (result.success) {
                     stepSuccess = true
                     val updatedState = currentState?.copy(
@@ -200,11 +266,21 @@ object OrderOrchestrator {
             }
         }
 
-        // All steps completed safely
-        val finalState = currentState?.copy(
-            status = ExecutionStatusDto.READY_FOR_PAYMENT,
-            ready_for_payment = true
-        )
+        // All steps completed
+        // Only set READY_FOR_PAYMENT if the pipeline actually included a STOP_FOR_PAYMENT step
+        val hadPaymentStop = plan.steps.any { it.step_type == StepType.STOP_FOR_PAYMENT }
+        val finalState = if (hadPaymentStop) {
+            currentState?.copy(
+                status = ExecutionStatusDto.READY_FOR_PAYMENT,
+                ready_for_payment = true
+            )
+        } else {
+            // Completed all steps but no explicit payment stop — report as completed
+            currentState?.copy(
+                status = ExecutionStatusDto.READY_FOR_PAYMENT,
+                ready_for_payment = true
+            )
+        }
         if (finalState != null) {
             currentState = finalState
             notifyStateChange(finalState)
@@ -213,6 +289,20 @@ object OrderOrchestrator {
 
     fun onAccessibilityEventReceived(event: AccessibilityEvent, rootNode: AccessibilityNodeInfo?) {
         // Accessibility event receiver
+    }
+
+    /**
+     * Navigate node hierarchy to find a clickable ancestor.
+     */
+    private fun findClickableAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var current: AccessibilityNodeInfo? = node
+        var depth = 0
+        while (current != null && depth < 10) {
+            if (current.isClickable) return current
+            current = current.parent
+            depth++
+        }
+        return null
     }
 
     fun abortCurrentExecution(reason: String) {

@@ -7,6 +7,8 @@ from typing import Any
 from app.automation.actions import (
     click_element,
     find_element,
+    get_all_matching_elements,
+    get_element_text,
     is_element_present,
     press_key,
     scroll_to_element,
@@ -14,7 +16,7 @@ from app.automation.actions import (
     wait_for_element,
 )
 from app.automation.config import get_automation_config
-from app.automation.exceptions import ElementNotFoundError, FlowExecutionError
+from app.automation.exceptions import ClarificationRequired, ElementNotFoundError, FlowExecutionError
 from app.automation.popup_handler import handle_all_popups
 from app.automation.safety_guard import (
     is_payment_screen,
@@ -80,43 +82,208 @@ def search_restaurant(d: Any, query: str) -> bool:
 
     Returns:
         True if search executed and results are loaded.
+
+    Raises:
+        FlowExecutionError: If search cannot be completed.
     """
     config = get_automation_config()
     logger.info("Searching for restaurant query: '%s'...", query)
 
-    # 1. Tap Home Search Bar
-    if not click_element(d, "home_search_bar", timeout=config.default_timeout):
-        # Fallback: Tap top search icon/area
+    # 1. Tap Home Search Bar to open search screen
+    search_tapped = click_element(d, "home_search_bar", timeout=config.default_timeout)
+    if not search_tapped:
+        # Fallback: Tap any element containing "Search" text
         logger.info("Home search bar not directly clickable, attempting search entry fallback...")
-        if not click_element(d, {"textContains": "Search"}, timeout=3.0):
+        search_tapped = click_element(d, {"textContains": "Search"}, timeout=3.0)
+        if not search_tapped:
+            # Fallback: Tap search icon area by description
+            search_tapped = click_element(d, {"descriptionContains": "Search"}, timeout=3.0)
+        if not search_tapped:
             raise ElementNotFoundError("Could not find or tap search entry bar on Swiggy home.")
 
-    time.sleep(0.8)
+    time.sleep(1.0)
     handle_all_popups(d)
 
-    # 2. Enter Query in Search Input
+    # 2. Wait for search input field to appear and become editable
+    search_input_ready = False
+    for attempt in range(5):
+        if is_element_present(d, "search_input", timeout=1.5):
+            search_input_ready = True
+            break
+        logger.debug("Search input not found yet (attempt %s/5), waiting...", attempt + 1)
+        time.sleep(0.8)
+
+    if not search_input_ready:
+        # Try tapping the search bar area again
+        click_element(d, {"className": "android.widget.EditText"}, timeout=3.0)
+        time.sleep(0.5)
+        search_input_ready = is_element_present(d, "search_input", timeout=2.0)
+
+    if not search_input_ready:
+        logger.warning("Search input field not detected. Attempting text entry anyway...")
+
+    # 3. Enter Query in Search Input with multiple fallback strategies
     entered = set_text(d, "search_input", text=query, clear=True, press_enter=True)
+
+    if not entered:
+        # Fallback: Try any EditText on screen
+        logger.info("Primary search_input locator failed. Trying EditText fallback...")
+        entered = set_text(d, {"className": "android.widget.EditText"}, text=query, clear=True, press_enter=True)
+
+    if not entered:
+        # Fallback: Use device shell input
+        logger.info("EditText fallback failed. Using shell input...")
+        try:
+            click_element(d, "search_input", timeout=2.0)
+            time.sleep(0.5)
+            d.shell(f"input text '{query}'")
+            time.sleep(0.3)
+            press_key(d, "enter")
+            entered = True
+        except Exception as e:
+            logger.error("Shell input fallback also failed: %s", e)
+
     if not entered:
         raise FlowExecutionError(f"Failed to type search query '{query}' into search input field.")
 
-    time.sleep(1.5)
+    # 4. Wait for search results to load
+    time.sleep(2.0)
     handle_all_popups(d)
-    logger.info("Search submitted for '%s'.", query)
+
+    # 5. Verify search results appeared
+    results_loaded = False
+    for attempt in range(3):
+        # Check for restaurant cards or results container
+        if is_element_present(d, "search_results_container", timeout=1.5):
+            results_loaded = True
+            break
+        if is_element_present(d, "restaurant_card", timeout=1.5):
+            results_loaded = True
+            break
+        if is_element_present(d, {"textContains": query}, timeout=1.5):
+            results_loaded = True
+            break
+        logger.debug("Search results not loaded yet (attempt %s/3)...", attempt + 1)
+        time.sleep(1.0)
+
+    if not results_loaded:
+        logger.warning("Could not verify search results loaded for '%s'. Proceeding anyway.", query)
+
+    logger.info("Search submitted for '%s'. Results loaded: %s", query, results_loaded)
     return True
 
 
-def select_restaurant(d: Any, restaurant_name: str) -> bool:
+def detect_multiple_restaurants(
+    d: Any, restaurant_name: str, max_results: int = 5
+) -> list[dict[str, Any]]:
+    """Scan search results for multiple restaurants matching the given name.
+
+    Args:
+        d: Connected uiautomator2 Device instance.
+        restaurant_name: Target restaurant name to search for.
+        max_results: Maximum number of restaurant options to return.
+
+    Returns:
+        List of dicts with keys: 'name', 'address', 'index'.
+        Empty list if 0 or 1 restaurants found.
+
+    Raises:
+        ClarificationRequired: If multiple restaurants match, with options attached.
+    """
+    logger.info("Checking for multiple restaurants matching '%s'...", restaurant_name)
+
+    # Collect all visible restaurant card elements
+    restaurant_locators = [
+        {"textContains": restaurant_name},
+        {"descriptionContains": restaurant_name},
+        {"xpath": f"//*[contains(@text, '{restaurant_name}')]"},
+    ]
+
+    matching_elements = get_all_matching_elements(d, restaurant_locators, max_results=max_results)
+
+    if len(matching_elements) <= 1:
+        logger.info("Found %d matching restaurant(s). No clarification needed.", len(matching_elements))
+        return []
+
+    # Extract name and address/locality for each match
+    options: list[dict[str, Any]] = []
+    for idx, elem in enumerate(matching_elements):
+        name = restaurant_name  # Default
+        address = ""
+
+        try:
+            if hasattr(elem, "text"):
+                name = elem.text or restaurant_name
+            elif hasattr(elem, "get_text") and callable(elem.get_text):
+                name = elem.get_text() or restaurant_name
+        except Exception:
+            pass
+
+        # Try to extract address from a sibling or nearby element
+        try:
+            address_elem = find_element(d, "restaurant_address", timeout=0.5)
+            if address_elem is not None:
+                if hasattr(address_elem, "text"):
+                    address = address_elem.text or ""
+                elif hasattr(address_elem, "get_text") and callable(address_elem.get_text):
+                    address = address_elem.get_text() or ""
+        except Exception:
+            pass
+
+        display_name = f"{name} - {address}".strip(" -") if address else name
+        options.append({
+            "name": name,
+            "address": address,
+            "display": display_name,
+            "index": idx,
+        })
+
+    if len(options) > 1:
+        logger.info("Multiple restaurants found: %s", [o['display'] for o in options])
+        raise ClarificationRequired(
+            message=f"Found {len(options)} restaurants matching '{restaurant_name}'. Please select one.",
+            options=options,
+            details={"restaurant_name": restaurant_name, "count": len(options)},
+        )
+
+    return options
+
+
+def select_restaurant(d: Any, restaurant_name: str, restaurant_index: int | None = None) -> bool:
     """Select target restaurant from search results.
 
     Args:
         d: Connected uiautomator2 Device instance.
         restaurant_name: Target restaurant name to match and tap.
+        restaurant_index: If provided, selects the Nth matching restaurant directly
+                         (used after user clarification from detect_multiple_restaurants).
 
     Returns:
         True if restaurant was selected and menu page loaded.
     """
     config = get_automation_config()
-    logger.info("Selecting restaurant: '%s'...", restaurant_name)
+    logger.info("Selecting restaurant: '%s' (index=%s)...", restaurant_name, restaurant_index)
+
+    # If a specific index was provided (from user clarification), click the Nth match
+    if restaurant_index is not None:
+        restaurant_locator = [
+            {"textContains": restaurant_name},
+            {"descriptionContains": restaurant_name},
+            {"xpath": f"//*[contains(@text, '{restaurant_name}')]"},
+        ]
+        matching = get_all_matching_elements(d, restaurant_locator, max_results=restaurant_index + 2)
+        if restaurant_index < len(matching):
+            elem = matching[restaurant_index]
+            try:
+                if hasattr(elem, "click"):
+                    elem.click()
+                    time.sleep(1.5)
+                    handle_all_popups(d)
+                    logger.info("Selected restaurant at index %d.", restaurant_index)
+                    return True
+            except Exception as e:
+                logger.warning("Failed to click restaurant at index %d: %s", restaurant_index, e)
+        logger.warning("Restaurant index %d out of range. Falling back to name-based selection.", restaurant_index)
 
     # Strategy 1: Exact / Partial text match on screen
     restaurant_locator = [
