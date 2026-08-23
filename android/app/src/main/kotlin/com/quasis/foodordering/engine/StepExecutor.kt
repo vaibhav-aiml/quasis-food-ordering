@@ -255,17 +255,26 @@ class StepExecutor(
         val dm = service.resources.displayMetrics
         val centerX = dm.widthPixels / 2f
         val favNodes = NodeHierarchyScanner.findNodesByResourceId(swiggyRoot, "favourite_ryl_root_layout")
-        if (favNodes.isNotEmpty() && favNodes.any { val b = Rect(); it.getBoundsInScreen(b); b.top < dm.heightPixels * 0.40f }) {
-            Log.d(TAG, "Home screen appears scrolled down — scrolling to top...")
-            GestureDispatcher.swipeVertical(service, centerX, dm.heightPixels * 0.38f, dm.heightPixels * 0.70f, 250L)
-            return fail(step, screen, "Restoring home screen to top...")
+        
+        // Exact search box position:
+        // When favourites is visible (top ~ 793px), the search box sits directly above it (~60dp above).
+        // Otherwise fallback to calibrated 24% height.
+        var searchTapY = dm.heightPixels * 0.24f
+        if (favNodes.isNotEmpty()) {
+            var highestFav = dm.heightPixels
+            for (f in favNodes) {
+                val b = Rect()
+                f.getBoundsInScreen(b)
+                if (b.top in 10 until highestFav) highestFav = b.top
+            }
+            if (highestFav in 500..1800) {
+                val offsetPx = (65 * dm.density).toInt()
+                searchTapY = (highestFav - offsetPx).toFloat().coerceAtLeast(dm.heightPixels * 0.20f)
+            }
         }
-
-        // Calibrated from live Swiggy home screen layout:
-        // Address (0-8%), Food/Instamart/Dineout tabs (9-18%), Search Box (22-26%)
         val searchTapX = dm.widthPixels * 0.42f
-        val searchTapY = dm.heightPixels * 0.24f
 
+        Log.i(TAG, "Tapping search bar at coordinates ($searchTapX, $searchTapY)...")
         GestureDispatcher.clickAtCoordinates(service, searchTapX, searchTapY, 120L)
         return fail(step, screen, "Opening search for '$query'...")
     }
