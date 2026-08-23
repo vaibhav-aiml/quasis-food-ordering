@@ -150,7 +150,7 @@ class StepExecutor(
         val launchIntent = service.packageManager.getLaunchIntentForPackage(packageName)
         if (launchIntent != null) {
             try {
-                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
                 service.startActivity(launchIntent)
                 return ok(step, ScreenType.UNKNOWN, "Launched package: $packageName")
             } catch (e: Exception) {

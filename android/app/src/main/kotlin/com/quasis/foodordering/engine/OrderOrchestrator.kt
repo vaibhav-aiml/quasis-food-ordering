@@ -118,25 +118,55 @@ object OrderOrchestrator {
 
             // Step: LAUNCH_APP
             if (step.step_type == StepType.LAUNCH_APP) {
-                val launchResult = executor.execute(step, service.getActiveRoot())
-                if (!launchResult.success) {
-                    val root = service.getActiveRoot()
-                    val pkg = root?.packageName?.toString() ?: ""
-                    if (pkg.contains("swiggy", ignoreCase = true) || service.getAppRoot("in.swiggy.android") != null) {
-                        Log.i(TAG, "Swiggy is already open on screen, proceeding...")
-                    } else if (step.is_critical) {
-                        abortCurrentExecution("Failed to open app: ${launchResult.message}")
+                var launchResult = executor.execute(step, service.getActiveRoot())
+                val targetPkg = step.parameters["package_name"]?.toString()?.removeSurrounding("\"")
+                    ?: "in.swiggy.android"
+
+                // VERIFY Swiggy actually reached the foreground — startActivity() called from an
+                // AccessibilityService can silently no-op on MIUI/HyperOS/Samsung One UI due to
+                // background-activity-start restrictions.
+                suspend fun waitForForeground(timeoutMs: Long): Boolean {
+                    val start = System.currentTimeMillis()
+                    while (System.currentTimeMillis() - start < timeoutMs) {
+                        val fgPkg = service.getAppRoot(targetPkg)?.packageName?.toString() ?: ""
+                        if (fgPkg == targetPkg || fgPkg.contains("swiggy", ignoreCase = true)) return true
+                        delay(500)
+                    }
+                    return false
+                }
+
+                var foregroundConfirmed = waitForForeground(6000)
+
+                if (!foregroundConfirmed) {
+                    val stillOn = service.getActiveRoot()?.packageName?.toString() ?: "unknown"
+                    Log.w(TAG, "Swiggy not in foreground after launch (still on '$stillOn'). Re-firing launch intent...")
+                    launchResult = executor.execute(step, service.getActiveRoot())
+                    foregroundConfirmed = waitForForeground(6000)
+                }
+
+                if (!foregroundConfirmed) {
+                    val stillOn = service.getActiveRoot()?.packageName?.toString() ?: "unknown"
+                    val msg = "Swiggy did not reach the foreground after launch (still showing '$stillOn'). " +
+                            "This usually means the OS blocked the background app launch — check battery/" +
+                            "background-activity restrictions for Quasis in Settings, or open Swiggy manually once."
+                    Log.w(TAG, msg)
+                    if (step.is_critical) {
+                        abortCurrentExecution(msg)
                         return
                     }
+                    launchResult = launchResult.copy(success = false, message = msg)
+                } else {
+                    launchResult = launchResult.copy(success = true, message = "Swiggy confirmed in foreground.")
                 }
+
                 val updatedState = currentState?.copy(
                     completed_steps = (currentState?.completed_steps ?: emptyList()) + launchResult
                 ) ?: return
                 currentState = updatedState
                 notifyStateChange(updatedState)
 
-                // Wait 3.5s for Swiggy home screen to fully render
-                delay(3500)
+                // Buffer for the home screen to finish rendering once confirmed.
+                delay(if (foregroundConfirmed) 1500 else 500)
                 continue
             }
 
