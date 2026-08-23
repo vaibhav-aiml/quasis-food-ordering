@@ -71,24 +71,31 @@ class StepExecutor(
         // Stateless execution
     }
 
+    private fun isGenuineSwiggyRoot(node: AccessibilityNodeInfo?): Boolean {
+        if (node == null) return false
+        val pkg = node.packageName?.toString() ?: return false
+        if (!pkg.contains("swiggy", ignoreCase = true)) {
+            Log.d(TAG, "Rejected accessibility root: pkg=$pkg, childCount=${node.childCount}, reason=non-Swiggy package")
+            return false
+        }
+        if (node.childCount == 0) {
+            Log.d(TAG, "Rejected accessibility root: pkg=$pkg, childCount=0, reason=zero children")
+            return false
+        }
+        return true
+    }
+
     private fun resolveRoot(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
-        val rootPkg = root?.packageName?.toString() ?: ""
-        if (root != null && !rootPkg.contains("foodordering") && !rootPkg.contains("permission")) {
+        if (isGenuineSwiggyRoot(root)) {
             return root
         }
         val appRoot = service.getAppRoot(SWIGGY_PKG)
-        if (appRoot != null) {
-            val appPkg = appRoot.packageName?.toString() ?: ""
-            if (!appPkg.contains("foodordering") && !appPkg.contains("permission")) {
-                return appRoot
-            }
+        if (isGenuineSwiggyRoot(appRoot)) {
+            return appRoot
         }
         val active = service.getActiveRoot()
-        if (active != null) {
-            val activePkg = active.packageName?.toString() ?: ""
-            if (!activePkg.contains("foodordering") && !activePkg.contains("permission")) {
-                return active
-            }
+        if (isGenuineSwiggyRoot(active)) {
+            return active
         }
         return null
     }
@@ -192,10 +199,6 @@ class StepExecutor(
         val swiggyRoot = resolveRoot(root)
 
         if (swiggyRoot == null) {
-            // Tap top search bar coordinates to wake up screen
-            val dm = service.resources.displayMetrics
-            val centerX = dm.widthPixels / 2f
-            GestureDispatcher.clickAtCoordinates(service, centerX, dm.heightPixels * 0.08f, 80L)
             return fail(step, screen, "Waiting for Swiggy screen to load...")
         }
 
@@ -254,7 +257,7 @@ class StepExecutor(
         val favNodes = NodeHierarchyScanner.findNodesByResourceId(swiggyRoot, "favourite_ryl_root_layout")
         if (favNodes.isNotEmpty() && favNodes.any { val b = Rect(); it.getBoundsInScreen(b); b.top < dm.heightPixels * 0.40f }) {
             Log.d(TAG, "Home screen appears scrolled down — scrolling to top...")
-            GestureDispatcher.swipeVertical(service, centerX, dm.heightPixels * 0.25f, dm.heightPixels * 0.75f, 250L)
+            GestureDispatcher.swipeVertical(service, centerX, dm.heightPixels * 0.38f, dm.heightPixels * 0.70f, 250L)
             return fail(step, screen, "Restoring home screen to top...")
         }
 
