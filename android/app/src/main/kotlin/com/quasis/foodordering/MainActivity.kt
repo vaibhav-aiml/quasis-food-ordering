@@ -219,6 +219,17 @@ class MainActivity : AppCompatActivity() {
                         tvProgressTitle.text = "🚀 Executing Swiggy Automation..."
                         tvProgressLogs.text = "Plan compiled successfully (${plan.steps.size} steps)\nStarting Android UI automation..."
 
+                        // Launch Swiggy directly from foreground Activity context (bypasses OEM background start restrictions)
+                        try {
+                            val launchIntent = packageManager.getLaunchIntentForPackage("in.swiggy.android")
+                            if (launchIntent != null) {
+                                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                                startActivity(launchIntent)
+                            }
+                        } catch (e: Exception) {
+                            Log.w("MainActivity", "Direct Activity launch fallback", e)
+                        }
+
                         // Trigger orchestrator with compiled plan
                         OrderOrchestrator.startExecution(plan)
                     },

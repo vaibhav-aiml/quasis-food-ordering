@@ -83,13 +83,20 @@ class FoodAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Find root node for a specific package, strictly matching the target package.
-     * Never falls back to Quasis's own window.
+     * Find root node for a specific package, strictly matching the active/focused target window.
+     * Never falls back to Quasis's own window or stale background windows.
      */
     fun getAppRoot(packageName: String): AccessibilityNodeInfo? {
+        // 1. Check true active window first
+        val active = rootInActiveWindow
+        val activePkg = active?.packageName?.toString() ?: ""
+        if (activePkg == packageName || activePkg.contains("swiggy", ignoreCase = true)) {
+            return active
+        }
+
+        // 2. Check focused or top application windows in window manager
         try {
             val allWindows = windows ?: emptyList()
-            // Check focused or top application windows first
             for (window in allWindows) {
                 if (window.isFocused || window.type == AccessibilityWindowInfo.TYPE_APPLICATION) {
                     val root = window.root ?: continue
@@ -99,24 +106,11 @@ class FoodAccessibilityService : AccessibilityService() {
                     }
                 }
             }
-            // Check any window
-            for (window in allWindows) {
-                val root = window.root ?: continue
-                val pkg = root.packageName?.toString() ?: continue
-                if (pkg == packageName || pkg.contains("swiggy", ignoreCase = true)) {
-                    return root
-                }
-            }
         } catch (e: Exception) {
             Log.w(TAG, "Error querying windows for $packageName", e)
         }
 
-        val active = rootInActiveWindow
-        val activePkg = active?.packageName?.toString() ?: ""
-        if (activePkg == packageName || activePkg.contains("swiggy", ignoreCase = true)) {
-            return active
-        }
-
+        // 3. Check most recent accessibility event root if matching package
         val last = lastEventRoot
         val lastPkg = last?.packageName?.toString() ?: ""
         if (lastPkg == packageName || lastPkg.contains("swiggy", ignoreCase = true)) {
