@@ -194,6 +194,21 @@ class MainActivity : AppCompatActivity() {
                         tvProgressTitle.text = "🚀 Executing Swiggy Automation..."
                         tvProgressLogs.text = "Plan compiled successfully (${plan.steps.size} steps)\nStarting Android UI automation..."
 
+                        // Launch Swiggy directly from Activity context
+                        try {
+                            val launchIntent = packageManager.getLaunchIntentForPackage("in.swiggy.android")
+                            if (launchIntent != null) {
+                                startActivity(launchIntent)
+                            } else {
+                                val deepLink = Intent(Intent.ACTION_VIEW, Uri.parse("swiggy://explore")).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(deepLink)
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.w("MainActivity", "Direct app launch failed", e)
+                        }
+
                         // Trigger orchestrator with compiled plan
                         OrderOrchestrator.startExecution(plan)
                     },

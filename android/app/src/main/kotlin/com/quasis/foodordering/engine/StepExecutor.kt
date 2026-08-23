@@ -77,9 +77,17 @@ class StepExecutor(
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             service.startActivity(searchIntent)
-            Log.d(TAG, "Fired swiggy://search deep link")
+            Log.d(TAG, "Fired swiggy://search deep link with package")
         } catch (e: Exception) {
-            Log.w(TAG, "Deep link failed", e)
+            try {
+                val genericSearch = Intent(Intent.ACTION_VIEW, Uri.parse("swiggy://search")).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                service.startActivity(genericSearch)
+                Log.d(TAG, "Fired swiggy://search deep link generic")
+            } catch (e2: Exception) {
+                Log.w(TAG, "Search deep link failed", e2)
+            }
         }
     }
 

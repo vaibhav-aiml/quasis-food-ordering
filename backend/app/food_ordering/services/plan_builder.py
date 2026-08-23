@@ -30,7 +30,7 @@ class FoodPlanBuilder:
         steps: list[OrderStep] = []
         step_counter = 1
 
-        # Step 1: Launch target application
+        # Step 1: Launch target application (non-critical fallback so execution proceeds smoothly)
         app_pkg = (
             "in.swiggy.android"
             if intent.target_app == "swiggy"
@@ -44,7 +44,7 @@ class FoodPlanBuilder:
                 parameters={"package_name": app_pkg},
                 expected_screen="home",
                 timeout_seconds=15,
-                is_critical=True,
+                is_critical=False,
             )
         )
         step_counter += 1
