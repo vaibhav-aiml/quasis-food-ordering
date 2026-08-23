@@ -261,8 +261,9 @@ class StepExecutor(
                 f.getBoundsInScreen(b)
                 if (b.top in 10 until highestFav) highestFav = b.top
             }
+            val offsetPx = (40 * dm.density).toInt()
             if (highestFav < dm.heightPixels && highestFav > 100) {
-                tapY = (highestFav - 70).toFloat().coerceAtLeast(dm.heightPixels * 0.07f)
+                tapY = (highestFav - offsetPx).toFloat().coerceAtLeast(dm.heightPixels * 0.07f)
             }
         }
 
@@ -300,31 +301,28 @@ class StepExecutor(
                     desc.contains("profile") || desc.contains("account")
 
             if (!isExcluded) {
+                val bounds = Rect()
+                node.getBoundsInScreen(bounds)
+
+                // 1. Explicit search keywords (safe anywhere)
                 val isExplicitSearch = id.contains("search") ||
                         text.contains("search") ||
                         desc.contains("search") ||
-                        text.contains("restaurant") ||
-                        desc.contains("restaurant") ||
-                        text.contains("groceries") ||
-                        desc.contains("groceries") ||
-                        text.contains("dish") ||
-                        desc.contains("dish") ||
-                        text.contains("biryani") ||
-                        text.contains("pizza") ||
-                        text.contains("burger") ||
-                        text.contains("cake") ||
-                        text.contains("mind")
-
-                val bounds = Rect()
-                node.getBoundsInScreen(bounds)
+                        text.contains("restaurants, groceries") ||
+                        desc.contains("restaurants, groceries")
 
                 if (isExplicitSearch && !node.isEditable && !cls.contains("EditText", ignoreCase = true)) {
                     results.add(node)
                 }
 
-                // Clickable container above favourites carousel in the top 25% of screen
-                if (node.isClickable && bounds.height() > 30 && bounds.bottom <= minFavTop && bounds.top < screenHeight * 0.25f) {
-                    if (isExplicitSearch || id.contains("query") || id.contains("bar") || id.contains("container") || bounds.width() > dm.widthPixels * 0.5f) {
+                // 2. Candidate containers strictly above favourites carousel in top 25% of screen
+                val isAboveFavourites = bounds.bottom <= minFavTop && bounds.top < screenHeight * 0.25f
+                if (isAboveFavourites && node.isClickable && bounds.height() > 30) {
+                    val isPlaceholderHint = text.contains("dish") || desc.contains("dish") ||
+                            text.contains("biryani") || text.contains("pizza") ||
+                            text.contains("burger") || text.contains("mind") ||
+                            text.contains("order") || text.contains("restaurant")
+                    if (isExplicitSearch || isPlaceholderHint || id.contains("query") || id.contains("bar") || bounds.width() > dm.widthPixels * 0.5f) {
                         results.add(node)
                     }
                 }
