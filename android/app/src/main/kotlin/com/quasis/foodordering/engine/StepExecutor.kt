@@ -249,15 +249,10 @@ class StepExecutor(
             return fail(step, screen, "Tapping search bar to open search...")
         }
 
+        // Single deliberate tap on top search bar area (Y ~ 8.5% of screen height)
         val dm = service.resources.displayMetrics
         val centerX = dm.widthPixels / 2f
-        // Top search bar center and right icon
         GestureDispatcher.clickAtCoordinates(service, centerX, dm.heightPixels * 0.085f, 80L)
-        GestureDispatcher.clickAtCoordinates(service, centerX, dm.heightPixels * 0.12f, 80L)
-        GestureDispatcher.clickAtCoordinates(service, dm.widthPixels * 0.88f, dm.heightPixels * 0.085f, 80L)
-        // Bottom search tab (Swiggy bottom navigation bar)
-        GestureDispatcher.clickAtCoordinates(service, dm.widthPixels * 0.38f, dm.heightPixels * 0.95f, 80L)
-        GestureDispatcher.clickAtCoordinates(service, dm.widthPixels * 0.50f, dm.heightPixels * 0.95f, 80L)
 
         return fail(step, screen, "Opening search for '$query'...")
     }
@@ -274,26 +269,31 @@ class StepExecutor(
             val desc = node.contentDescription?.toString()?.lowercase() ?: ""
             val cls = node.className?.toString() ?: ""
 
-            val isSearchRelated = id.contains("search") ||
-                    text.contains("search") ||
-                    desc.contains("search") ||
-                    text.contains("dish") ||
-                    desc.contains("dish") ||
-                    text.contains("groceries") ||
-                    desc.contains("groceries") ||
-                    text.contains("restaurant") ||
-                    desc.contains("restaurant")
+            // Exclude obvious non-search header elements
+            val isExcluded = id.contains("profile") || id.contains("account") ||
+                    id.contains("location") || id.contains("address") ||
+                    id.contains("notification") || id.contains("bell") ||
+                    id.contains("cart") || desc.contains("cart") ||
+                    desc.contains("profile") || desc.contains("account")
 
-            if (isSearchRelated && !node.isEditable && !cls.contains("EditText", ignoreCase = true)) {
-                results.add(node)
-            }
+            if (!isExcluded) {
+                val isExplicitSearch = id.contains("search") ||
+                        text.contains("search") ||
+                        desc.contains("search") ||
+                        text.contains("restaurants, groceries") ||
+                        desc.contains("restaurants, groceries")
 
-            // Also check clickable top header bar containers (Y between 4% and 18% of screen)
-            val bounds = Rect()
-            node.getBoundsInScreen(bounds)
-            if (node.isClickable && bounds.height() > 0 && bounds.centerY() in (screenHeight * 0.04f).toInt()..(screenHeight * 0.18f).toInt()) {
-                if (isSearchRelated || id.contains("query") || id.contains("bar") || id.contains("header") || id.contains("icon")) {
+                if (isExplicitSearch && !node.isEditable && !cls.contains("EditText", ignoreCase = true)) {
                     results.add(node)
+                }
+
+                // Top search bar container (Y between 4% and 15% of screen) with search keyword or query id
+                val bounds = Rect()
+                node.getBoundsInScreen(bounds)
+                if (node.isClickable && bounds.height() > 0 && bounds.centerY() in (screenHeight * 0.04f).toInt()..(screenHeight * 0.15f).toInt()) {
+                    if (isExplicitSearch || id.contains("query") || id.contains("search_bar")) {
+                        results.add(node)
+                    }
                 }
             }
 
@@ -301,7 +301,11 @@ class StepExecutor(
         }
         traverse(root)
 
-        return results.distinct()
+        // Prioritize nodes that explicitly contain "search" text/desc
+        return results.distinct().sortedByDescending { n ->
+            val txt = (n.text?.toString() ?: "") + " " + (n.contentDescription?.toString() ?: "")
+            if (txt.contains("search", ignoreCase = true)) 2 else 1
+        }
     }
 
     private fun findSearchSuggestions(root: AccessibilityNodeInfo, query: String): List<AccessibilityNodeInfo> {
