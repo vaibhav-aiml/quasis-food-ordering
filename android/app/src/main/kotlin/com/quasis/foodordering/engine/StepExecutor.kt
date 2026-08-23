@@ -250,6 +250,13 @@ class StepExecutor(
         }
 
         val dm = service.resources.displayMetrics
+        val centerX = dm.widthPixels / 2f
+        val favNodes = NodeHierarchyScanner.findNodesByResourceId(swiggyRoot, "favourite_ryl_root_layout")
+        if (favNodes.isNotEmpty() && favNodes.any { val b = Rect(); it.getBoundsInScreen(b); b.top < dm.heightPixels * 0.40f }) {
+            Log.d(TAG, "Home screen appears scrolled down — scrolling to top...")
+            GestureDispatcher.swipeVertical(service, centerX, dm.heightPixels * 0.25f, dm.heightPixels * 0.75f, 250L)
+        }
+
         // Calibrated from live Swiggy home screen layout:
         // Address (0-8%), Food/Instamart/Dineout tabs (9-18%), Search Box (22-26%)
         val searchTapX = dm.widthPixels * 0.42f
