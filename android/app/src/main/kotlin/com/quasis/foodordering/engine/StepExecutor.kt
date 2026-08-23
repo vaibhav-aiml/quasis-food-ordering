@@ -208,6 +208,38 @@ class StepExecutor(
 
     // ================== STEP 2: SEARCH RESTAURANT ==================
 
+    private fun findSearchInputField(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val dm = service.resources.displayMetrics
+        val screenHeight = dm.heightPixels
+        val editables = findAllEditableNodes(root)
+        if (editables.isNotEmpty()) return editables.first()
+
+        // Compose search input fields that may not expose isEditable=true
+        val candidates = mutableListOf<AccessibilityNodeInfo>()
+        fun traverse(node: AccessibilityNodeInfo?) {
+            if (node == null) return
+            val text = node.text?.toString()?.lowercase() ?: ""
+            val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+            val id = node.viewIdResourceName?.lowercase() ?: ""
+            val bounds = Rect()
+            node.getBoundsInScreen(bounds)
+
+            // Search input field is in the top 22% of screen (Y between 4% and 22%)
+            val inTopBand = bounds.centerY() in (screenHeight * 0.04f).toInt()..(screenHeight * 0.22f).toInt()
+            if (inTopBand && bounds.width() > dm.widthPixels * 0.35f) {
+                if (text.contains("search") || text.contains("try '") || text.contains("enjoy") ||
+                    text.contains("repeat") || text.contains("dish") || desc.contains("search") ||
+                    id.contains("search") || id.contains("query") || id.contains("et_search") ||
+                    id.contains("search_bar") || node.isClickable || node.isFocusable) {
+                    candidates.add(node)
+                }
+            }
+            for (i in 0 until node.childCount) traverse(node.getChild(i))
+        }
+        traverse(root)
+        return candidates.firstOrNull()
+    }
+
     private fun executeSearch(step: OrderStepDto, screen: ScreenType, root: AccessibilityNodeInfo?): StepExecutionResultDto {
         val query = step.target_value ?: return fail(step, screen, "Search query missing.")
         val swiggyRoot = resolveRoot(root)
@@ -221,10 +253,16 @@ class StepExecutor(
             return ok(step, screen, "Search results showing for '$query'")
         }
 
-        val editables = findAllEditableNodes(swiggyRoot)
-        if (editables.isNotEmpty()) {
-            val editNode = editables.first()
-            val currentText = editNode.text?.toString() ?: ""
+        val allTexts = NodeHierarchyScanner.extractAllVisibleTexts(swiggyRoot).map { it.lowercase() }
+        val isSearchScreen = allTexts.any {
+            it.contains("search for dishes") || it.contains("trending searches") ||
+            it.contains("recently searched") || it.contains("popular cuisines") ||
+            it.contains("search, order, enjoy") || it.contains("try '")
+        }
+
+        val searchInput = findSearchInputField(swiggyRoot)
+        if (searchInput != null) {
+            val currentText = searchInput.text?.toString() ?: ""
 
             if (currentText.contains(query, ignoreCase = true)) {
                 val suggestions = findSearchSuggestions(swiggyRoot, query)
@@ -236,7 +274,6 @@ class StepExecutor(
                     return ok(step, screen, "Selected search suggestion for '$query'")
                 }
 
-                val allTexts = NodeHierarchyScanner.extractAllVisibleTexts(swiggyRoot).map { it.lowercase() }
                 if (allTexts.any { it.contains("restaurant") || it.contains("dishes") || it.contains("mins") || it.contains("delivery") }) {
                     val restTabs = NodeHierarchyScanner.findNodesByText(swiggyRoot, "restaurants", exactMatch = true)
                     for (tab in restTabs) {
@@ -249,7 +286,9 @@ class StepExecutor(
                 return ok(step, screen, "Searched for '$query'")
             } else {
                 Log.d(TAG, "Injecting '$query' into search field...")
-                val injected = GestureDispatcher.setText(service, editNode, query)
+                val clickable = findClickableAncestor(searchInput) ?: searchInput
+                GestureDispatcher.clickNode(clickable, service)
+                val injected = GestureDispatcher.setText(service, searchInput, query)
                 if (injected) {
                     submitSearch(swiggyRoot)
                     return ok(step, screen, "Entered search query '$query'")
@@ -257,6 +296,18 @@ class StepExecutor(
             }
         }
 
+        val dm = service.resources.displayMetrics
+
+        // If on Search screen, tap the search input bar directly at Y = 11% (inside the white search box)
+        if (isSearchScreen) {
+            val searchScreenTapX = dm.widthPixels * 0.45f
+            val searchScreenTapY = dm.heightPixels * 0.11f
+            Log.i(TAG, "On Search screen — tapping search input box at ($searchScreenTapX, $searchScreenTapY)...")
+            GestureDispatcher.clickAtCoordinates(service, searchScreenTapX, searchScreenTapY, 100L)
+            return fail(step, screen, "Tapping search input box on Search screen...")
+        }
+
+        // On Home screen: check search bar nodes or tap home search box
         val searchBarNodes = findHomeSearchNodes(swiggyRoot)
         if (searchBarNodes.isNotEmpty()) {
             val targetBar = searchBarNodes.first()
@@ -266,40 +317,10 @@ class StepExecutor(
             return fail(step, screen, "Tapping search bar to open search...")
         }
 
-        val dm = service.resources.displayMetrics
-        val centerX = dm.widthPixels / 2f
-        val favNodes = NodeHierarchyScanner.findNodesByResourceId(swiggyRoot, "favourite_ryl_root_layout")
-        
-        // Exact search box position:
-        // When favourites is visible (top ~ 793px), the search box sits directly above it (~60dp above).
-        // Otherwise fallback to calibrated 24% height.
-        var searchTapY = dm.heightPixels * 0.24f
-        if (favNodes.isNotEmpty()) {
-            var highestFav = dm.heightPixels
-            for (f in favNodes) {
-                val b = Rect()
-                f.getBoundsInScreen(b)
-                if (b.top in 10 until highestFav) highestFav = b.top
-            }
-            if (highestFav in 500..1800) {
-                val offsetPx = (65 * dm.density).toInt()
-                searchTapY = (highestFav - offsetPx).toFloat().coerceAtLeast(dm.heightPixels * 0.20f)
-            }
-        }
         val searchTapX = dm.widthPixels * 0.42f
+        val searchTapY = dm.heightPixels * 0.24f
 
-        // Try direct deep link explore transition
-        try {
-            val exploreIntent = Intent(Intent.ACTION_VIEW, Uri.parse("swiggy://explore")).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                setPackage(SWIGGY_PKG)
-            }
-            if (exploreIntent.resolveActivity(service.packageManager) != null) {
-                service.startActivity(exploreIntent)
-            }
-        } catch (_: Exception) {}
-
-        Log.i(TAG, "Tapping search bar at coordinates ($searchTapX, $searchTapY)...")
+        Log.i(TAG, "Tapping search bar on Home screen at coordinates ($searchTapX, $searchTapY)...")
         GestureDispatcher.clickAtCoordinates(service, searchTapX, searchTapY, 120L)
         return fail(step, screen, "Opening search for '$query'...")
     }
