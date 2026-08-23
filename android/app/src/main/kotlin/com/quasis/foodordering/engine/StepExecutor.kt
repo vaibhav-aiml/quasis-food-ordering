@@ -68,7 +68,11 @@ class StepExecutor(
     }
 
     fun resetSearchState() {
-        // No-op for stateless execution
+        // Stateless execution
+    }
+
+    private fun resolveRoot(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        return root ?: service.getActiveRoot() ?: service.getAppRoot(SWIGGY_PKG) ?: service.rootInActiveWindow
     }
 
     // ================== POPUP DISMISSAL ==================
@@ -133,7 +137,15 @@ class StepExecutor(
 
     private fun executeSearch(step: OrderStepDto, screen: ScreenType, root: AccessibilityNodeInfo?): StepExecutionResultDto {
         val query = step.target_value ?: return fail(step, screen, "Search query missing.")
-        val swiggyRoot = root ?: return fail(step, screen, "Waiting for Swiggy screen to load...")
+        val swiggyRoot = resolveRoot(root)
+
+        if (swiggyRoot == null) {
+            // Tap top search bar coordinates to wake up screen
+            val dm = service.resources.displayMetrics
+            val centerX = dm.widthPixels / 2f
+            GestureDispatcher.clickAtCoordinates(service, centerX, dm.heightPixels * 0.08f, 80L)
+            return fail(step, screen, "Waiting for Swiggy screen to load...")
+        }
 
         if (isTargetVisibleOnScreen(swiggyRoot, query)) {
             Log.i(TAG, "Target '$query' visible on screen — search complete!")
@@ -253,7 +265,7 @@ class StepExecutor(
 
     private fun executeSelectRestaurant(step: OrderStepDto, screen: ScreenType, root: AccessibilityNodeInfo?): StepExecutionResultDto {
         val target = step.target_value ?: return fail(step, screen, "Target missing.")
-        val swiggyRoot = root ?: return fail(step, screen, "Swiggy not loaded.")
+        val swiggyRoot = resolveRoot(root) ?: return fail(step, screen, "Swiggy not loaded.")
 
         val allTexts = NodeHierarchyScanner.extractAllVisibleTexts(swiggyRoot).map { it.lowercase() }
         val isMenuPage = allTexts.any {
@@ -328,7 +340,7 @@ class StepExecutor(
 
     private fun executeSearchMenuItem(step: OrderStepDto, screen: ScreenType, root: AccessibilityNodeInfo?): StepExecutionResultDto {
         val itemName = step.target_value ?: return fail(step, screen, "Item name missing.")
-        val swiggyRoot = root ?: return fail(step, screen, "Swiggy not loaded.")
+        val swiggyRoot = resolveRoot(root) ?: return fail(step, screen, "Swiggy not loaded.")
 
         if (isTargetVisibleOnScreen(swiggyRoot, itemName)) {
             return ok(step, screen, "Found '$itemName' on menu")
@@ -354,7 +366,7 @@ class StepExecutor(
 
     private fun executeSelectItem(step: OrderStepDto, screen: ScreenType, root: AccessibilityNodeInfo?): StepExecutionResultDto {
         val target = step.target_value ?: return fail(step, screen, "Item name missing.")
-        val swiggyRoot = root ?: return fail(step, screen, "Swiggy not loaded.")
+        val swiggyRoot = resolveRoot(root) ?: return fail(step, screen, "Swiggy not loaded.")
 
         val targetNode = findBestMatchingNode(swiggyRoot, target)
         if (targetNode != null) {
@@ -370,7 +382,7 @@ class StepExecutor(
 
     private fun executeAddToCart(step: OrderStepDto, screen: ScreenType, root: AccessibilityNodeInfo?): StepExecutionResultDto {
         val target = step.target_value ?: "Item"
-        val swiggyRoot = root ?: return fail(step, screen, "Swiggy not loaded.")
+        val swiggyRoot = resolveRoot(root) ?: return fail(step, screen, "Swiggy not loaded.")
         val dm = service.resources.displayMetrics
 
         val allTexts = NodeHierarchyScanner.extractAllVisibleTexts(swiggyRoot).map { it.lowercase() }
@@ -424,7 +436,7 @@ class StepExecutor(
     // ================== STEP 7: VIEW CART ==================
 
     private fun executeViewCart(step: OrderStepDto, screen: ScreenType, root: AccessibilityNodeInfo?): StepExecutionResultDto {
-        val swiggyRoot = root ?: return fail(step, screen, "Swiggy not loaded.")
+        val swiggyRoot = resolveRoot(root) ?: return fail(step, screen, "Swiggy not loaded.")
         val dm = service.resources.displayMetrics
 
         val confirmButtons = NodeHierarchyScanner.findNodesByText(swiggyRoot, "add item", exactMatch = false) +
@@ -459,7 +471,7 @@ class StepExecutor(
     // ================== CUSTOMIZATION ==================
 
     private fun executeApplyCustomization(step: OrderStepDto, screen: ScreenType, root: AccessibilityNodeInfo?): StepExecutionResultDto {
-        val swiggyRoot = root
+        val swiggyRoot = resolveRoot(root)
         if (swiggyRoot != null) {
             val confirmButtons = NodeHierarchyScanner.findNodesByText(swiggyRoot, "add item", exactMatch = false) +
                     NodeHierarchyScanner.findNodesByText(swiggyRoot, "continue", exactMatch = false) +

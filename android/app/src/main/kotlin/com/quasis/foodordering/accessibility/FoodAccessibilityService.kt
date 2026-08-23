@@ -1,6 +1,7 @@
 package com.quasis.foodordering.accessibility
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -22,14 +23,35 @@ class FoodAccessibilityService : AccessibilityService() {
         fun isRunning(): Boolean = instance != null
     }
 
+    @Volatile
+    private var lastEventRoot: AccessibilityNodeInfo? = null
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        Log.i(TAG, "Quasis Food AccessibilityService connected successfully.")
+
+        try {
+            val info = serviceInfo ?: AccessibilityServiceInfo()
+            info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK
+            info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
+            info.flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
+                    AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+                    AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
+            info.notificationTimeout = 50
+            info.packageNames = null // Monitor all packages for smooth transitions
+            serviceInfo = info
+        } catch (e: Exception) {
+            Log.w(TAG, "Error setting programmatic serviceInfo", e)
+        }
+
+        Log.i(TAG, "Quasis Food AccessibilityService connected and configured successfully.")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
+        try {
+            event.source?.let { lastEventRoot = it }
+        } catch (_: Exception) {}
         val rootNode = getActiveRoot()
         OrderOrchestrator.onAccessibilityEventReceived(event, rootNode)
     }
@@ -41,14 +63,23 @@ class FoodAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow
         if (root != null) return root
 
-        return try {
+        try {
             val allWindows = windows ?: emptyList()
-            allWindows.firstOrNull { it.isFocused }?.root
-                ?: allWindows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }?.root
-                ?: allWindows.firstOrNull()?.root
+            for (w in allWindows) {
+                if (w.isFocused || w.type == AccessibilityWindowInfo.TYPE_APPLICATION) {
+                    val r = w.root
+                    if (r != null) return r
+                }
+            }
+            if (allWindows.isNotEmpty()) {
+                val firstRoot = allWindows.first().root
+                if (firstRoot != null) return firstRoot
+            }
         } catch (e: Exception) {
-            null
+            // ignore
         }
+
+        return lastEventRoot
     }
 
     /**
@@ -74,8 +105,9 @@ class FoodAccessibilityService : AccessibilityService() {
             return activeRoot
         }
 
-        return rootInActiveWindow
+        return lastEventRoot ?: rootInActiveWindow
     }
+
 
 
     override fun onInterrupt() {
