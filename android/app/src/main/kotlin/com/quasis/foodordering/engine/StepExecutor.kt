@@ -79,12 +79,45 @@ class StepExecutor(
 
     private fun dismissPopupsIfPresent(root: AccessibilityNodeInfo) {
         try {
-            val dismissTexts = listOf("not now", "later", "cancel", "skip", "close", "✕", "dismiss", "maybe later", "remind me later")
+            // 0. OS-level runtime permission dialogs (location, notifications) block Swiggy's
+            // own window from ever becoming focused/rooted. Check by package and button texts.
+            val rootPkg = root.packageName?.toString() ?: ""
+            if (rootPkg.contains("permissioncontroller") || rootPkg.contains("permission")) {
+                val allowTexts = listOf(
+                    "while using the app", "only this time", "allow",
+                    "allow all the time", "turn on"
+                )
+                for (txt in allowTexts) {
+                    val nodes = NodeHierarchyScanner.findNodesByText(root, txt, exactMatch = false)
+                    val target = nodes.firstOrNull { it.isClickable } ?: nodes.firstOrNull()
+                    if (target != null) {
+                        val clickable = findClickableAncestor(target) ?: target
+                        clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                        Log.d(TAG, "Granted OS permission dialog via '$txt'")
+                        return
+                    }
+                }
+                // Unknown permission dialog layout — deny rather than hang forever
+                val denyNodes = NodeHierarchyScanner.findNodesByText(root, "deny", exactMatch = false) +
+                        NodeHierarchyScanner.findNodesByText(root, "don't allow", exactMatch = false)
+                val deny = denyNodes.firstOrNull { it.isClickable }
+                if (deny != null) {
+                    deny.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    Log.d(TAG, "Denied unrecognized permission dialog to unblock pipeline")
+                    return
+                }
+            }
+
+            val dismissTexts = listOf(
+                "not now", "later", "cancel", "skip", "close", "✕", "dismiss",
+                "maybe later", "remind me later", "no thanks", "got it", "ok"
+            )
             for (txt in dismissTexts) {
                 val nodes = NodeHierarchyScanner.findNodesByText(root, txt, exactMatch = true)
                 for (n in nodes) {
-                    if (n.isClickable) {
-                        n.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    val clickable = findClickableAncestor(n) ?: n
+                    if (clickable.isClickable) {
+                        clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                         Log.d(TAG, "Dismissed popup via text '$txt'")
                         return
                     }
@@ -96,8 +129,9 @@ class StepExecutor(
                     NodeHierarchyScanner.findNodesByResourceId(root, "in.swiggy.android:id/iv_close") +
                     NodeHierarchyScanner.findNodesByResourceId(root, "in.swiggy.android:id/cross_icon")
             for (btn in closeButtons) {
-                if (btn.isClickable) {
-                    btn.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                val clickable = findClickableAncestor(btn) ?: btn
+                if (clickable.isClickable) {
+                    clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                     Log.d(TAG, "Dismissed popup via close button ID")
                     return
                 }
@@ -572,6 +606,8 @@ class StepExecutor(
     }
 
     private fun fail(step: OrderStepDto, screen: ScreenType, msg: String): StepExecutionResultDto {
+        Log.w(TAG, "STEP FAILED [${step.step_type}] screen=$screen msg=$msg")
+        dumpHierarchyForDebugging(step)
         return StepExecutionResultDto(
             step_id = step.step_id,
             step_type = step.step_type,
@@ -579,5 +615,34 @@ class StepExecutor(
             observed_screen = screen.name,
             message = msg
         )
+    }
+
+    /**
+     * Dumps resource-id + class + text for every node currently on screen to logcat whenever a
+     * step fails. This allows inspecting real production Swiggy UI hierarchy with:
+     * `adb logcat -s StepExecutor:W`
+     */
+    private fun dumpHierarchyForDebugging(step: OrderStepDto) {
+        try {
+            val root = service.getAppRoot(SWIGGY_PKG) ?: service.getActiveRoot() ?: return
+            Log.w(TAG, "---- HIERARCHY DUMP (step=${step.step_type}, pkg=${root.packageName}) ----")
+            var count = 0
+            fun traverse(node: AccessibilityNodeInfo?, depth: Int) {
+                if (node == null || count > 150) return
+                val id = node.viewIdResourceName ?: "-"
+                val cls = node.className?.toString()?.substringAfterLast('.') ?: "-"
+                val text = node.text?.toString()
+                val desc = node.contentDescription?.toString()
+                if (!text.isNullOrBlank() || !desc.isNullOrBlank() || id != "-") {
+                    Log.w(TAG, "${"  ".repeat(depth)}[$cls] id=$id text=${text ?: "-"} desc=${desc ?: "-"} clickable=${node.isClickable} editable=${node.isEditable}")
+                    count++
+                }
+                for (i in 0 until node.childCount) traverse(node.getChild(i), depth + 1)
+            }
+            traverse(root, 0)
+            Log.w(TAG, "---- END HIERARCHY DUMP ($count nodes) ----")
+        } catch (e: Exception) {
+            Log.d(TAG, "Hierarchy dump failed: ${e.message}")
+        }
     }
 }

@@ -36,11 +36,11 @@ object GestureDispatcher {
         if (!actionClicked && node.isClickable) {
             actionClicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
         }
+        if (actionClicked) return true
 
-        // 2. Perform physical touch gesture on coordinates
+        // 2. FALLBACK ONLY: physical touch gesture on coordinates, used only when native ACTION_CLICK failed
         if (service != null && !bounds.isEmpty && bounds.centerX() > 0 && bounds.centerY() > 0) {
-            clickAtCoordinates(service, bounds.centerX().toFloat(), bounds.centerY().toFloat(), 80L)
-            return true
+            return clickAtCoordinates(service, bounds.centerX().toFloat(), bounds.centerY().toFloat(), 80L)
         }
 
         return actionClicked

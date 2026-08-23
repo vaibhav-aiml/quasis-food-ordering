@@ -149,9 +149,10 @@ object SwiggyScreenMappings {
     }
 
     private fun isCartScreen(joined: String, texts: List<String>, rootNode: AccessibilityNodeInfo): Boolean {
+        // "view cart" is deliberately excluded — appears on the floating cart bar on RESTAURANT_MENU screen
         val cartKeywords = listOf(
             "bill details", "to pay", "item total", "delivery partner tip",
-            "cancellation policy", "apply coupon", "view cart", "review order"
+            "cancellation policy", "apply coupon", "review order"
         )
         return cartKeywords.any { joined.contains(it) }
     }

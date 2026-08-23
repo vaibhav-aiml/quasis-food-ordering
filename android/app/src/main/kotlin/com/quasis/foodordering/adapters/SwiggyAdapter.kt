@@ -37,7 +37,8 @@ class SwiggyAdapter(
     }
 
     private fun getRootNode(): AccessibilityNodeInfo? {
-        return serviceSupplier()?.rootInActiveWindow
+        val service = serviceSupplier() ?: return null
+        return service.getAppRoot(packageName) ?: service.getActiveRoot()
     }
 
     /**

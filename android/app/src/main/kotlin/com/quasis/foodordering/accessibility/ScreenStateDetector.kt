@@ -66,9 +66,10 @@ object ScreenStateDetector {
     }
 
     private fun isCartScreen(joined: String, texts: List<String>): Boolean {
+        // "view cart" excluded on purpose — also appears on the RESTAURANT_MENU screen's floating cart bar
         val cartKeywords = listOf(
             "bill details", "to pay", "item total", "delivery partner tip",
-            "cancellation policy", "apply coupon", "view cart", "review order"
+            "cancellation policy", "apply coupon", "review order"
         )
         return cartKeywords.any { joined.contains(it) }
     }
