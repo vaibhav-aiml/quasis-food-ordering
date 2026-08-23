@@ -424,15 +424,6 @@ class StepExecutor(
         return results
     }
 
-    private fun submitSearch(root: AccessibilityNodeInfo) {
-        val editables = findAllEditableNodes(root)
-        for (node in editables) {
-            try {
-                node.performAction(AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY)
-            } catch (_: Exception) {}
-        }
-    }
-
     // ================== STEP 3: SELECT RESTAURANT ==================
 
     private fun executeSelectRestaurant(step: OrderStepDto, screen: ScreenType, root: AccessibilityNodeInfo?): StepExecutionResultDto {
