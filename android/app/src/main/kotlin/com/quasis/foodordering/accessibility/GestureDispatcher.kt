@@ -54,36 +54,41 @@ object GestureDispatcher {
         node: AccessibilityNodeInfo?,
         text: String
     ): Boolean {
-        if (node == null) return false
-
-        // 1. Try native ACTION_SET_TEXT directly if supported
-        val args = Bundle().apply {
-            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-        }
-        val directSet = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        if (directSet) return true
-
-        // 2. Focus the node and retry ACTION_SET_TEXT
-        node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-        val focusedSet = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        if (focusedSet) return true
-
-        // 3. Click the node natively (no coordinate tap delay) and retry ACTION_SET_TEXT
-        node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        val clickedSet = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        if (clickedSet) return true
-
-        // 4. Fallback: Copy to clipboard and perform ACTION_PASTE
+        // 1. Copy to clipboard FIRST so paste works on any focusable element
         try {
             val clipboard = service.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             if (clipboard != null) {
                 val clip = ClipData.newPlainText("order_search_query", text)
                 clipboard.setPrimaryClip(clip)
-                val pasted = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-                if (pasted) return true
             }
-        } catch (e: Exception) {
-            // ignore
+        } catch (_: Exception) {}
+
+        val args = Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+        }
+
+        // 2. Try on the target node directly
+        if (node != null) {
+            if (node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return true
+            node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            if (node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return true
+            node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return true
+            if (node.performAction(AccessibilityNodeInfo.ACTION_PASTE)) return true
+        }
+
+        // 3. Try on the currently focused input in the active window (e.g. Compose active focus)
+        val activeRoot = service.rootInActiveWindow
+        val focusedInput = activeRoot?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (focusedInput != null) {
+            if (focusedInput.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return true
+            if (focusedInput.performAction(AccessibilityNodeInfo.ACTION_PASTE)) return true
+        }
+
+        val focusedA11y = activeRoot?.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
+        if (focusedA11y != null) {
+            if (focusedA11y.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return true
+            if (focusedA11y.performAction(AccessibilityNodeInfo.ACTION_PASTE)) return true
         }
 
         return false

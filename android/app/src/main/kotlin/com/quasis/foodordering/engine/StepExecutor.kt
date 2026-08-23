@@ -248,16 +248,30 @@ class StepExecutor(
             return fail(step, screen, "Waiting for Swiggy screen to load...")
         }
 
+        // 1. Check if results for query are ALREADY visible on screen
         if (isTargetVisibleOnScreen(swiggyRoot, query)) {
             Log.i(TAG, "Target '$query' visible on screen — search complete!")
             return ok(step, screen, "Search results showing for '$query'")
         }
 
+        // 2. Fire Swiggy's direct explore search intent with query parameter
+        try {
+            val deepLinkUri = Uri.parse("swiggy://explore?query=${Uri.encode(query)}")
+            val searchIntent = Intent(Intent.ACTION_VIEW, deepLinkUri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                setPackage(SWIGGY_PKG)
+            }
+            if (searchIntent.resolveActivity(service.packageManager) != null) {
+                service.startActivity(searchIntent)
+            }
+        } catch (_: Exception) {}
+
         val allTexts = NodeHierarchyScanner.extractAllVisibleTexts(swiggyRoot).map { it.lowercase() }
         val isSearchScreen = allTexts.any {
             it.contains("search for dishes") || it.contains("trending searches") ||
             it.contains("recently searched") || it.contains("popular cuisines") ||
-            it.contains("search, order, enjoy") || it.contains("try '")
+            it.contains("search, order, enjoy") || it.contains("try '") ||
+            it.contains("dishes & restaurants")
         }
 
         val searchInput = findSearchInputField(swiggyRoot)
@@ -288,11 +302,9 @@ class StepExecutor(
                 Log.d(TAG, "Injecting '$query' into search field...")
                 val clickable = findClickableAncestor(searchInput) ?: searchInput
                 GestureDispatcher.clickNode(clickable, service)
-                val injected = GestureDispatcher.setText(service, searchInput, query)
-                if (injected) {
-                    submitSearch(swiggyRoot)
-                    return ok(step, screen, "Entered search query '$query'")
-                }
+                GestureDispatcher.setText(service, searchInput, query)
+                submitSearch(swiggyRoot)
+                return ok(step, screen, "Entered search query '$query'")
             }
         }
 
@@ -304,6 +316,8 @@ class StepExecutor(
             val searchScreenTapY = dm.heightPixels * 0.11f
             Log.i(TAG, "On Search screen — tapping search input box at ($searchScreenTapX, $searchScreenTapY)...")
             GestureDispatcher.clickAtCoordinates(service, searchScreenTapX, searchScreenTapY, 100L)
+            GestureDispatcher.setText(service, null, query)
+            submitSearch(swiggyRoot)
             return fail(step, screen, "Tapping search input box on Search screen...")
         }
 
@@ -323,6 +337,18 @@ class StepExecutor(
         Log.i(TAG, "Tapping search bar on Home screen at coordinates ($searchTapX, $searchTapY)...")
         GestureDispatcher.clickAtCoordinates(service, searchTapX, searchTapY, 120L)
         return fail(step, screen, "Opening search for '$query'...")
+    }
+
+    private fun submitSearch(root: AccessibilityNodeInfo) {
+        val dm = service.resources.displayMetrics
+        val editables = findAllEditableNodes(root)
+        for (node in editables) {
+            try {
+                node.performAction(AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY)
+            } catch (_: Exception) {}
+        }
+        // Physical tap on soft keyboard search/enter icon (bottom right corner)
+        GestureDispatcher.clickAtCoordinates(service, dm.widthPixels * 0.92f, dm.heightPixels * 0.96f, 60L)
     }
 
     private fun findHomeSearchNodes(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
