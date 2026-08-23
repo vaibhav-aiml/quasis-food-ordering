@@ -83,10 +83,12 @@ object NodeHierarchyScanner {
 
         fun traverse(node: AccessibilityNodeInfo?) {
             if (node == null) return
-            if (node.isVisibleToUser) {
-                node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { texts.add(it) }
-                node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { texts.add(it) }
-            }
+            val text = node.text?.toString()?.trim()
+            if (!text.isNullOrEmpty()) texts.add(text)
+
+            val desc = node.contentDescription?.toString()?.trim()
+            if (!desc.isNullOrEmpty() && desc != text) texts.add(desc)
+
             for (i in 0 until node.childCount) {
                 traverse(node.getChild(i))
             }
@@ -95,6 +97,7 @@ object NodeHierarchyScanner {
         traverse(root)
         return texts
     }
+
 
     /**
      * Extracts screen bounds for a node.

@@ -56,18 +56,24 @@ object GestureDispatcher {
     ): Boolean {
         if (node == null) return false
 
-        // 1. Give focus & click node to activate input connection
-        node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-        clickNode(node, service)
-
-        // 2. Native ACTION_SET_TEXT
+        // 1. Try native ACTION_SET_TEXT directly if supported
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
-        val setSuccess = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        if (setSuccess) return true
+        val directSet = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        if (directSet) return true
 
-        // 3. Fallback: Copy to clipboard and PASTE
+        // 2. Focus the node and retry ACTION_SET_TEXT
+        node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        val focusedSet = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        if (focusedSet) return true
+
+        // 3. Click the node natively (no coordinate tap delay) and retry ACTION_SET_TEXT
+        node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        val clickedSet = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        if (clickedSet) return true
+
+        // 4. Fallback: Copy to clipboard and perform ACTION_PASTE
         try {
             val clipboard = service.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             if (clipboard != null) {
@@ -82,6 +88,7 @@ object GestureDispatcher {
 
         return false
     }
+
 
     /**
      * Performs a physical tap at specific screen coordinates using AccessibilityService.dispatchGesture.

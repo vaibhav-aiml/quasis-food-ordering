@@ -42,17 +42,17 @@ class FoodAccessibilityService : AccessibilityService() {
         if (root != null) return root
 
         return try {
-            windows?.firstOrNull { it.isFocused || it.type == AccessibilityWindowInfo.TYPE_APPLICATION }?.root
-                ?: windows?.firstOrNull()?.root
+            val allWindows = windows ?: emptyList()
+            allWindows.firstOrNull { it.isFocused }?.root
+                ?: allWindows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }?.root
+                ?: allWindows.firstOrNull()?.root
         } catch (e: Exception) {
             null
         }
     }
 
     /**
-     * Explicitly find a specific app's window root by package name.
-     * This is critical when our app fires an intent but the target app's
-     * window might not be the "active" one yet.
+     * Find root node for a specific package, with reliable fallback.
      */
     fun getAppRoot(packageName: String): AccessibilityNodeInfo? {
         try {
@@ -61,7 +61,6 @@ class FoodAccessibilityService : AccessibilityService() {
                 val root = window.root ?: continue
                 val pkg = root.packageName?.toString() ?: continue
                 if (pkg == packageName) {
-                    Log.d(TAG, "Found window for $packageName (type=${window.type})")
                     return root
                 }
             }
@@ -69,15 +68,15 @@ class FoodAccessibilityService : AccessibilityService() {
             Log.w(TAG, "Error querying windows for $packageName", e)
         }
 
-        // Fallback to active root and check package
+        // Fallback to active root
         val activeRoot = getActiveRoot()
-        if (activeRoot?.packageName?.toString() == packageName) {
+        if (activeRoot != null) {
             return activeRoot
         }
 
-        Log.w(TAG, "Could not find window for $packageName. Active pkg=${activeRoot?.packageName}")
-        return activeRoot
+        return rootInActiveWindow
     }
+
 
     override fun onInterrupt() {
         Log.w(TAG, "AccessibilityService interrupted.")

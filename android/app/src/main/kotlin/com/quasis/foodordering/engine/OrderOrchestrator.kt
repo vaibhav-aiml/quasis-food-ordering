@@ -147,28 +147,23 @@ object OrderOrchestrator {
             val isSearchStep = step.step_type == StepType.SEARCH_RESTAURANT || step.step_type == StepType.SEARCH_MENU_ITEM
             val isSelectStep = step.step_type == StepType.SELECT_RESTAURANT || step.step_type == StepType.SELECT_ITEM
 
-            // Timeouts: search=25s, select=15s, others=12s
+            // Timeouts: search=30s, select=20s, add_to_cart=20s, others=15s
             val timeoutMs = when {
-                isSearchStep -> 25000L
-                isSelectStep -> 15000L
-                else -> (step.timeout_seconds.coerceIn(8, 25)) * 1000L
+                isSearchStep -> 30000L
+                isSelectStep -> 20000L
+                step.step_type == StepType.ADD_TO_CART -> 20000L
+                else -> (step.timeout_seconds.coerceIn(10, 30)) * 1000L
             }
             val startTime = System.currentTimeMillis()
             var stepSuccess = false
             var lastResult: StepExecutionResultDto? = null
 
-            // Trigger search view once at step start if step is a search action
-            if (isSearchStep) {
-                executor.prepareSearchScreen()
-                // Wait 3 seconds for the search screen to fully render
-                delay(3000)
-            }
-
             while (System.currentTimeMillis() - startTime < timeoutMs) {
-                // Use Swiggy-specific root
-                val rootNode = service.getAppRoot("in.swiggy.android")
+                // Use Swiggy-specific root, falling back to active root
+                val rootNode = service.getAppRoot("in.swiggy.android") ?: service.getActiveRoot()
                 val result = executor.execute(step, rootNode)
                 lastResult = result
+
 
                 // Check if step needs user clarification (multiple restaurants found)
                 if (!result.success && !result.clarification_options.isNullOrEmpty()) {
