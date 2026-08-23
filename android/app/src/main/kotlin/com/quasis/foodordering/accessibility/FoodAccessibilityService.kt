@@ -83,15 +83,27 @@ class FoodAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Find root node for a specific package, with reliable fallback.
+     * Find root node for a specific package, strictly matching the target package.
+     * Never falls back to Quasis's own window.
      */
     fun getAppRoot(packageName: String): AccessibilityNodeInfo? {
         try {
             val allWindows = windows ?: emptyList()
+            // Check focused or top application windows first
+            for (window in allWindows) {
+                if (window.isFocused || window.type == AccessibilityWindowInfo.TYPE_APPLICATION) {
+                    val root = window.root ?: continue
+                    val pkg = root.packageName?.toString() ?: continue
+                    if (pkg == packageName || pkg.contains("swiggy", ignoreCase = true)) {
+                        return root
+                    }
+                }
+            }
+            // Check any window
             for (window in allWindows) {
                 val root = window.root ?: continue
                 val pkg = root.packageName?.toString() ?: continue
-                if (pkg == packageName) {
+                if (pkg == packageName || pkg.contains("swiggy", ignoreCase = true)) {
                     return root
                 }
             }
@@ -99,13 +111,19 @@ class FoodAccessibilityService : AccessibilityService() {
             Log.w(TAG, "Error querying windows for $packageName", e)
         }
 
-        // Fallback to active root
-        val activeRoot = getActiveRoot()
-        if (activeRoot != null) {
-            return activeRoot
+        val active = rootInActiveWindow
+        val activePkg = active?.packageName?.toString() ?: ""
+        if (activePkg == packageName || activePkg.contains("swiggy", ignoreCase = true)) {
+            return active
         }
 
-        return lastEventRoot ?: rootInActiveWindow
+        val last = lastEventRoot
+        val lastPkg = last?.packageName?.toString() ?: ""
+        if (lastPkg == packageName || lastPkg.contains("swiggy", ignoreCase = true)) {
+            return last
+        }
+
+        return null
     }
 
 

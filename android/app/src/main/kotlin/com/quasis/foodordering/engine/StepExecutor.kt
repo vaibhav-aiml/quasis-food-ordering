@@ -72,7 +72,25 @@ class StepExecutor(
     }
 
     private fun resolveRoot(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
-        return root ?: service.getActiveRoot() ?: service.getAppRoot(SWIGGY_PKG) ?: service.rootInActiveWindow
+        val rootPkg = root?.packageName?.toString() ?: ""
+        if (root != null && !rootPkg.contains("foodordering") && !rootPkg.contains("permission")) {
+            return root
+        }
+        val appRoot = service.getAppRoot(SWIGGY_PKG)
+        if (appRoot != null) {
+            val appPkg = appRoot.packageName?.toString() ?: ""
+            if (!appPkg.contains("foodordering") && !appPkg.contains("permission")) {
+                return appRoot
+            }
+        }
+        val active = service.getActiveRoot()
+        if (active != null) {
+            val activePkg = active.packageName?.toString() ?: ""
+            if (!activePkg.contains("foodordering") && !activePkg.contains("permission")) {
+                return active
+            }
+        }
+        return null
     }
 
     // ================== POPUP DISMISSAL ==================
@@ -581,10 +599,16 @@ class StepExecutor(
 
     private fun findAllEditableNodes(root: AccessibilityNodeInfo?): List<AccessibilityNodeInfo> {
         if (root == null) return emptyList()
+        val rootPkg = root.packageName?.toString() ?: ""
+        if (rootPkg.contains("foodordering")) return emptyList() // Never touch Quasis own UI
+
         val results = mutableListOf<AccessibilityNodeInfo>()
         fun traverse(node: AccessibilityNodeInfo?) {
             if (node == null) return
             val cls = node.className?.toString() ?: ""
+            val id = node.viewIdResourceName?.lowercase() ?: ""
+            if (id.contains("etserverurl") || id.contains("etorderprompt")) return
+
             if (node.isEditable || cls.contains("EditText", ignoreCase = true) ||
                 cls.contains("AutoComplete", ignoreCase = true) || cls.contains("TextField", ignoreCase = true)) {
                 results.add(node)

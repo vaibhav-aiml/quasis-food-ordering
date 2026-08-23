@@ -189,8 +189,26 @@ object OrderOrchestrator {
             var lastResult: StepExecutionResultDto? = null
 
             while (System.currentTimeMillis() - startTime < timeoutMs) {
-                // Use Swiggy-specific root, falling back to active root
-                val rootNode = service.getAppRoot("in.swiggy.android") ?: service.getActiveRoot()
+                // Query Swiggy root specifically
+                var rootNode = service.getAppRoot("in.swiggy.android")
+                if (rootNode == null) {
+                    val active = service.getActiveRoot()
+                    val activePkg = active?.packageName?.toString() ?: ""
+                    if (activePkg.contains("foodordering")) {
+                        // Swiggy is not in foreground! Re-fire launch intent
+                        Log.w(TAG, "Quasis is in foreground instead of Swiggy. Re-launching Swiggy...")
+                        try {
+                            val launchIntent = service.packageManager.getLaunchIntentForPackage("in.swiggy.android")
+                            launchIntent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                            if (launchIntent != null) service.startActivity(launchIntent)
+                        } catch (_: Exception) {}
+                        delay(1200)
+                        rootNode = service.getAppRoot("in.swiggy.android")
+                    } else if (activePkg.contains("swiggy", ignoreCase = true)) {
+                        rootNode = active
+                    }
+                }
+
                 val result = executor.execute(step, rootNode)
                 lastResult = result
 
