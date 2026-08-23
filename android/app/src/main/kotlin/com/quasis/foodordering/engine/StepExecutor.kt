@@ -607,42 +607,76 @@ class StepExecutor(
 
     private fun fail(step: OrderStepDto, screen: ScreenType, msg: String): StepExecutionResultDto {
         Log.w(TAG, "STEP FAILED [${step.step_type}] screen=$screen msg=$msg")
-        dumpHierarchyForDebugging(step)
+        val dump = dumpHierarchyForDebugging(step)
+        val fullMsg = if (dump.isNotBlank()) "$msg\n$dump" else msg
         return StepExecutionResultDto(
             step_id = step.step_id,
             step_type = step.step_type,
             success = false,
             observed_screen = screen.name,
-            message = msg
+            message = fullMsg
         )
     }
 
     /**
-     * Dumps resource-id + class + text for every node currently on screen to logcat whenever a
-     * step fails. This allows inspecting real production Swiggy UI hierarchy with:
-     * `adb logcat -s StepExecutor:W`
+     * Dumps a compact summary of what's actually on screen whenever a step fails — both to
+     * logcat (`adb logcat -s StepExecutor:W`) AND as a short string that gets appended to the
+     * on-screen "Order Failed" message, so it's readable straight off the phone without adb.
+     * Prioritizes clickable/editable nodes and anything id/text/desc-related to "search", since
+     * that's almost always what a SEARCH_RESTAURANT failure needs to diagnose.
      */
-    private fun dumpHierarchyForDebugging(step: OrderStepDto) {
+    private fun dumpHierarchyForDebugging(step: OrderStepDto): String {
         try {
-            val root = service.getAppRoot(SWIGGY_PKG) ?: service.getActiveRoot() ?: return
-            Log.w(TAG, "---- HIERARCHY DUMP (step=${step.step_type}, pkg=${root.packageName}) ----")
-            var count = 0
-            fun traverse(node: AccessibilityNodeInfo?, depth: Int) {
-                if (node == null || count > 150) return
-                val id = node.viewIdResourceName ?: "-"
-                val cls = node.className?.toString()?.substringAfterLast('.') ?: "-"
-                val text = node.text?.toString()
-                val desc = node.contentDescription?.toString()
-                if (!text.isNullOrBlank() || !desc.isNullOrBlank() || id != "-") {
-                    Log.w(TAG, "${"  ".repeat(depth)}[$cls] id=$id text=${text ?: "-"} desc=${desc ?: "-"} clickable=${node.isClickable} editable=${node.isEditable}")
-                    count++
-                }
-                for (i in 0 until node.childCount) traverse(node.getChild(i), depth + 1)
+            val root = service.getAppRoot(SWIGGY_PKG) ?: service.getActiveRoot() ?: return ""
+            val allNodes = mutableListOf<AccessibilityNodeInfo>()
+            fun collect(node: AccessibilityNodeInfo?) {
+                if (node == null || allNodes.size > 300) return
+                allNodes.add(node)
+                for (i in 0 until node.childCount) collect(node.getChild(i))
             }
-            traverse(root, 0)
-            Log.w(TAG, "---- END HIERARCHY DUMP ($count nodes) ----")
+            collect(root)
+
+            fun describe(n: AccessibilityNodeInfo): String {
+                val id = n.viewIdResourceName?.substringAfterLast('/') ?: "-"
+                val cls = n.className?.toString()?.substringAfterLast('.') ?: "-"
+                val text = n.text?.toString()?.take(30)
+                val desc = n.contentDescription?.toString()?.take(30)
+                val flags = (if (n.isClickable) "C" else "") + (if (n.isEditable) "E" else "")
+                return "[$cls${if (flags.isNotEmpty()) "($flags)" else ""}] id=$id txt=${text ?: desc ?: "-"}"
+            }
+
+            // Full dump to logcat for deep debugging on a computer.
+            Log.w(TAG, "---- HIERARCHY DUMP (step=${step.step_type}, pkg=${root.packageName}) ----")
+            allNodes.filter {
+                !it.text.isNullOrBlank() || !it.contentDescription.isNullOrBlank() || it.viewIdResourceName != null
+            }.forEach { Log.w(TAG, describe(it)) }
+            Log.w(TAG, "---- END HIERARCHY DUMP ----")
+
+            // Short on-screen summary: relevant nodes first, then a handful of everything else.
+            val relevant = allNodes.filter { n ->
+                val hay = listOfNotNull(n.viewIdResourceName, n.text?.toString(), n.contentDescription?.toString())
+                    .joinToString(" ").lowercase()
+                hay.contains("search") || n.isEditable
+            }.distinct().take(6)
+
+            val clickableWithText = allNodes.filter {
+                it.isClickable && (!it.text.isNullOrBlank() || !it.contentDescription.isNullOrBlank())
+            }.distinct().take(8)
+
+            val lines = mutableListOf("--- On-screen (pkg=${root.packageName?.toString()?.substringAfterLast('.') ?: "?"}) ---")
+            if (relevant.isNotEmpty()) {
+                lines.add("Search-related:")
+                relevant.forEach { lines.add("  ${describe(it)}") }
+            } else {
+                lines.add("Search-related: NONE FOUND")
+            }
+            lines.add("Clickable elements:")
+            clickableWithText.forEach { lines.add("  ${describe(it)}") }
+
+            return lines.joinToString("\n")
         } catch (e: Exception) {
             Log.d(TAG, "Hierarchy dump failed: ${e.message}")
+            return ""
         }
     }
 }
