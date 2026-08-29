@@ -1,7 +1,23 @@
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
-// In Android Emulator, localhost is 10.0.2.2. On physical devices, use LAN IP.
-export const DEFAULT_API_HOST = Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://localhost:3001';
+// Auto-detect computer's Wi-Fi IP address from Expo bundler hostUri
+const getDevServerHost = () => {
+  const debuggerHost =
+    Constants.expoConfig?.hostUri ||
+    (Constants as any).manifest2?.extra?.expoClient?.hostUri ||
+    (Constants as any).manifest?.debuggerHost;
+
+  if (debuggerHost) {
+    const ip = debuggerHost.split(':')[0];
+    if (ip && ip !== 'localhost' && ip !== '127.0.0.1') {
+      return `http://${ip}:3001`;
+    }
+  }
+  return Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://localhost:3001';
+};
+
+export const DEFAULT_API_HOST = getDevServerHost();
 
 let currentApiBaseUrl = DEFAULT_API_HOST;
 
