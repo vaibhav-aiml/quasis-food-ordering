@@ -1,7 +1,7 @@
 {
   "name": "@quasis/food-ordering-mobile",
   "version": "1.0.0",
-  "main": "expo-router/entry",
+  "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
@@ -24,6 +24,7 @@
     "@babel/core": "^7.20.0",
     "@types/react": "~18.2.45",
     "@types/react-native": "~0.73.0",
+    "babel-preset-expo": "~11.0.0",
     "typescript": "~5.3.3"
   },
   "private": true
