@@ -49,7 +49,7 @@ Respond strictly in valid JSON matching this schema:
 }`;
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3500);
+    const timeout = setTimeout(() => controller.abort(), 6000);
 
     try {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -59,14 +59,13 @@ Respond strictly in valid JSON matching this schema:
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: 'qwen/qwen3.6-27b',
+          model: 'openai/gpt-oss-20b',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: prompt },
           ],
-          response_format: { type: 'json_object' },
           temperature: 0.1,
-          max_tokens: 150,
+          max_tokens: 400,
         }),
         signal: controller.signal,
       });

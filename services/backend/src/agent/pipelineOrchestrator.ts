@@ -189,7 +189,7 @@ export class PipelineOrchestrator {
 
     await this.sleep(1400);
 
-    const bestResult = this.searchService.findBestRecommendation(intent);
+    const bestResult = await this.searchService.findBestRecommendation(intent);
 
     if (!bestResult) {
       session.stage = 'FAILED';

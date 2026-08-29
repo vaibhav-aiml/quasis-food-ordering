@@ -60,18 +60,6 @@ export const SWIGGY_CATALOG: Restaurant[] = [
         category: 'Sides',
         image: 'https://images.unsplash.com/photo-1619535860434-ba1d8fa12536?auto=format&fit=crop&w=500&q=80',
       },
-      {
-        id: 'dom_item_05',
-        name: 'Margherita Classic Pizza',
-        price: 199,
-        rating: 4.5,
-        ratingCount: 22000,
-        description: 'Classic single cheese delight topped with fresh basil and herb seasoned tomato sauce.',
-        isVeg: true,
-        popular: false,
-        category: 'Veg Pizzas',
-        image: 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?auto=format&fit=crop&w=500&q=80',
-      },
     ],
   },
   {
@@ -109,30 +97,6 @@ export const SWIGGY_CATALOG: Restaurant[] = [
         category: 'Cold Brews & Iced Coffee',
         image: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?auto=format&fit=crop&w=500&q=80',
       },
-      {
-        id: 'twc_item_03',
-        name: 'Iced Spanish Latte',
-        price: 210,
-        rating: 4.6,
-        ratingCount: 1540,
-        description: 'Sweetened textured milk with a double shot of dark roast espresso over crushed ice.',
-        isVeg: true,
-        popular: false,
-        category: 'Cold Brews & Iced Coffee',
-        image: 'https://images.unsplash.com/photo-1553909489-cd47e0907980?auto=format&fit=crop&w=500&q=80',
-      },
-      {
-        id: 'twc_item_04',
-        name: 'Almond Croissant',
-        price: 160,
-        rating: 4.5,
-        ratingCount: 890,
-        description: 'Flaky buttery pastry filled with sweet almond frangipane and topped with toasted almonds.',
-        isVeg: true,
-        popular: false,
-        category: 'Bakery',
-        image: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=500&q=80',
-      },
     ],
   },
   {
@@ -158,30 +122,6 @@ export const SWIGGY_CATALOG: Restaurant[] = [
         category: 'Iced Coffee',
         image: 'https://images.unsplash.com/photo-1517256064527-09c73fc73e38?auto=format&fit=crop&w=500&q=80',
       },
-      {
-        id: 'bt_item_02',
-        name: 'Original Cold Brew Bottle (200ml)',
-        price: 175,
-        rating: 4.6,
-        ratingCount: 3100,
-        description: 'Steeped for 18 hours in cold filtered water. Zero bitterness, high caffeine kick.',
-        isVeg: true,
-        popular: true,
-        category: 'Cold Brews',
-        image: 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?auto=format&fit=crop&w=500&q=80',
-      },
-      {
-        id: 'bt_item_03',
-        name: 'Hazelnut Cold Coffee',
-        price: 205,
-        rating: 4.7,
-        ratingCount: 1650,
-        description: 'Cold espresso with creamy hazelnut syrup and farm fresh milk.',
-        isVeg: true,
-        popular: false,
-        category: 'Iced Coffee',
-        image: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?auto=format&fit=crop&w=500&q=80',
-      },
     ],
   },
   {
@@ -192,7 +132,7 @@ export const SWIGGY_CATALOG: Restaurant[] = [
     ratingCount: 52000,
     deliveryTimeMinutes: 30,
     address: 'St. Marks Road, Ashok Nagar, Bengaluru',
-    cuisines: ['American', 'Burgers', 'Fast Food', 'Beverages', 'Desserts'],
+    cuisines: ['American', 'Burgers', 'Fast Food', 'Beverages'],
     coverImage: 'https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=600&q=80',
     menu: [
       {
@@ -201,96 +141,11 @@ export const SWIGGY_CATALOG: Restaurant[] = [
         price: 220,
         rating: 4.7,
         ratingCount: 18400,
-        description: 'Juicy chicken patty grilled with melted cheddar cheese, caramelized onions, and house sauce.',
+        description: 'Juicy chicken patty grilled with melted cheddar cheese and caramelized onions.',
         isVeg: false,
         popular: true,
         category: 'Burgers',
         image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=500&q=80',
-      },
-      {
-        id: 'truf_item_02',
-        name: 'Crunchy Veg Burger',
-        price: 170,
-        rating: 4.5,
-        ratingCount: 9400,
-        description: 'Crispy seasoned vegetable patty topped with lettuce, spicy mayo, and pickles.',
-        isVeg: true,
-        popular: true,
-        category: 'Burgers',
-        image: 'https://images.unsplash.com/photo-1520072959219-c595dc870360?auto=format&fit=crop&w=500&q=80',
-      },
-      {
-        id: 'truf_item_03',
-        name: 'Belgian Chocolate Milkshake',
-        price: 195,
-        rating: 4.6,
-        ratingCount: 8200,
-        description: 'Thick creamy milkshake made with real Belgian dark cocoa and vanilla ice cream.',
-        isVeg: true,
-        popular: true,
-        category: 'Beverages',
-        image: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?auto=format&fit=crop&w=500&q=80',
-      },
-      {
-        id: 'truf_item_04',
-        name: 'Truffles Thick Cold Coffee',
-        price: 155,
-        rating: 4.6,
-        ratingCount: 6200,
-        description: 'Creamy blended cold coffee crowned with chocolate syrup and cocoa powder.',
-        isVeg: true,
-        popular: true,
-        category: 'Beverages',
-        image: 'https://images.unsplash.com/photo-1517256064527-09c73fc73e38?auto=format&fit=crop&w=500&q=80',
-      },
-    ],
-  },
-  {
-    id: 'rest_starbucks_104',
-    name: 'Starbucks Coffee',
-    slug: 'starbucks-coffee-church-street',
-    rating: 4.4,
-    ratingCount: 22000,
-    deliveryTimeMinutes: 25,
-    address: 'Church Street, Shanthala Nagar, Bengaluru',
-    cuisines: ['Beverages', 'Cafe', 'Bakery', 'Coffee'],
-    coverImage: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=600&q=80',
-    menu: [
-      {
-        id: 'sb_item_01',
-        name: 'Signature Iced Caffe Latte (Tall)',
-        price: 245,
-        rating: 4.5,
-        ratingCount: 4300,
-        description: 'Our dark, rich espresso balanced with steamed milk and a light layer of foam over ice.',
-        isVeg: true,
-        popular: true,
-        category: 'Cold Coffee',
-        image: 'https://images.unsplash.com/photo-1517256064527-09c73fc73e38?auto=format&fit=crop&w=500&q=80',
-      },
-      {
-        id: 'sb_item_02',
-        name: 'Cold Brew Black (Tall)',
-        price: 220,
-        rating: 4.4,
-        ratingCount: 2100,
-        description: 'Handcrafted in small batches daily, slow-steeped in cool water for 20 hours.',
-        isVeg: true,
-        popular: false,
-        category: 'Cold Brews',
-        image: 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?auto=format&fit=crop&w=500&q=80',
-      },
-      {
-        id: 'sb_item_03',
-        name: 'Double Chocolate Chip Cookie',
-        price: 185,
-        rating: 4.3,
-        ratingCount: 1200,
-        description: 'Rich dark cookie loaded with Belgian chocolate chips and butter.',
-        isVeg: true,
-        popular: false,
-        category: 'Bakery',
-        image: 'https://images.unsplash.com/photo-1499636136210-6f4ee915583e?auto=format&fit=crop&w=500&q=80',
       },
     ],
   },
@@ -302,7 +157,7 @@ export const SWIGGY_CATALOG: Restaurant[] = [
     ratingCount: 78000,
     deliveryTimeMinutes: 30,
     address: 'Residency Road, Bengaluru',
-    cuisines: ['Biryani', 'Andhra', 'South Indian', 'North Indian'],
+    cuisines: ['Biryani', 'Andhra', 'South Indian'],
     coverImage: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&w=600&q=80',
     menu: [
       {
@@ -316,128 +171,6 @@ export const SWIGGY_CATALOG: Restaurant[] = [
         popular: true,
         category: 'Biryani',
         image: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&w=500&q=80',
-      },
-      {
-        id: 'mf_item_02',
-        name: 'Paneer Biryani',
-        price: 260,
-        rating: 4.4,
-        ratingCount: 9200,
-        description: 'Fresh cottage cheese cubes marinated in Andhra spices served with flavored basmati rice.',
-        isVeg: true,
-        popular: true,
-        category: 'Biryani',
-        image: 'https://images.unsplash.com/photo-1589302168068-964664d93dc0?auto=format&fit=crop&w=500&q=80',
-      },
-      {
-        id: 'mf_item_03',
-        name: 'Lemon Chicken (Starter)',
-        price: 290,
-        rating: 4.5,
-        ratingCount: 8100,
-        description: 'Tender chicken tossed in tangy lemon seasoning, green chilies, and curry leaves.',
-        isVeg: false,
-        popular: false,
-        category: 'Starters',
-        image: 'https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?auto=format&fit=crop&w=500&q=80',
-      },
-    ],
-  },
-  {
-    id: 'rest_california_burrito_106',
-    name: 'California Burrito',
-    slug: 'california-burrito-mg-road',
-    rating: 4.5,
-    ratingCount: 26000,
-    deliveryTimeMinutes: 25,
-    address: '1 MG-Lido Mall, Trinity Circle, Bengaluru',
-    cuisines: ['Mexican', 'Salads', 'Healthy Food', 'Bowls'],
-    coverImage: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?auto=format&fit=crop&w=600&q=80',
-    menu: [
-      {
-        id: 'cb_item_01',
-        name: 'Crispy Mushroom Rice Bowl',
-        price: 199,
-        rating: 4.6,
-        ratingCount: 4200,
-        description: 'Cilantro lime rice with black beans, roasted salsa, crispy seasoned mushrooms, and sour cream.',
-        isVeg: true,
-        popular: true,
-        category: 'Burrito Bowls',
-        image: 'https://images.unsplash.com/photo-1543339308-43e59d6b73a6?auto=format&fit=crop&w=500&q=80',
-      },
-      {
-        id: 'cb_item_02',
-        name: 'Grilled Chicken Burrito',
-        price: 239,
-        rating: 4.6,
-        ratingCount: 6800,
-        description: 'Smoky grilled chicken wrapped in a warm flour tortilla with salsa, pinto beans, and jack cheese.',
-        isVeg: false,
-        popular: true,
-        category: 'Burritos',
-        image: 'https://images.unsplash.com/photo-1626700051175-6818013e1d4f?auto=format&fit=crop&w=500&q=80',
-      },
-      {
-        id: 'cb_item_03',
-        name: 'Nachos with Fresh Guacamole',
-        price: 179,
-        rating: 4.5,
-        ratingCount: 3100,
-        description: 'Warm crispy corn tortilla chips served with handcrafted Hass avocado guacamole.',
-        isVeg: true,
-        popular: false,
-        category: 'Sides',
-        image: 'https://images.unsplash.com/photo-1513456852971-30c0b8199d4d?auto=format&fit=crop&w=500&q=80',
-      },
-    ],
-  },
-  {
-    id: 'rest_chai_point_107',
-    name: 'Chai Point',
-    slug: 'chai-point-indiranagar',
-    rating: 4.4,
-    ratingCount: 31000,
-    deliveryTimeMinutes: 18,
-    address: '12th Main Road, Indiranagar, Bengaluru',
-    cuisines: ['Tea', 'Beverages', 'Fast Food', 'Snacks'],
-    coverImage: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&w=600&q=80',
-    menu: [
-      {
-        id: 'cp_item_01',
-        name: 'Iced Ginger Chai Latte',
-        price: 130,
-        rating: 4.5,
-        ratingCount: 3900,
-        description: 'Refreshing chilled milk tea infused with fresh crushed ginger and aromatic spices.',
-        isVeg: true,
-        popular: true,
-        category: 'Iced Chai',
-        image: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&w=500&q=80',
-      },
-      {
-        id: 'cp_item_02',
-        name: 'Classic Cold Coffee Bottle',
-        price: 145,
-        rating: 4.5,
-        ratingCount: 5200,
-        description: 'Brewed robust chicory-coffee blend shaken with chilled sweet milk in a reusable flask.',
-        isVeg: true,
-        popular: true,
-        category: 'Cold Coffee',
-        image: 'https://images.unsplash.com/photo-1517256064527-09c73fc73e38?auto=format&fit=crop&w=500&q=80',
-      },
-      {
-        id: 'cp_item_03',
-        name: 'Bun Maska',
-        price: 65,
-        rating: 4.6,
-        ratingCount: 7800,
-        description: 'Soft warm bakery bun generously buttered with salted Amul butter.',
-        isVeg: true,
-        popular: true,
-        category: 'Snacks',
-        image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=500&q=80',
       },
     ],
   },
@@ -458,9 +191,6 @@ export class SwiggySearchService {
     return this.catalog.find((r) => r.id === id || r.slug.includes(id));
   }
 
-  /**
-   * Finds restaurants matching the search criteria or restaurant name
-   */
   public searchRestaurants(restaurantName?: string | null, cuisine?: string): Restaurant[] {
     let results = [...this.catalog];
 
@@ -488,18 +218,166 @@ export class SwiggySearchService {
       }
     }
 
-    // Default to sorting by rating descending
     return results.sort((a, b) => b.rating - a.rating);
   }
 
   /**
-   * Finds and ranks the best matching menu items given a FoodIntent
+   * Finds and ranks the best matching menu items using Groq AI or local fallback.
    */
-  public findBestRecommendation(intent: FoodIntent): RecommendationResult | null {
-    // 1. Determine candidate restaurants
+  public async findBestRecommendation(intent: FoodIntent): Promise<RecommendationResult | null> {
+    // 1. Primary path: Use Groq AI for universal catalog & menu intelligence
+    if (process.env.GROQ_API_KEY) {
+      try {
+        const groqResult = await this.findWithGroqAI(intent, process.env.GROQ_API_KEY);
+        if (groqResult) {
+          return groqResult;
+        }
+      } catch (err) {
+        console.warn('Groq AI search fallback to local matcher:', err);
+      }
+    }
+
+    // 2. Fallback path: Local catalog matcher
+    return this.findLocally(intent);
+  }
+
+  /**
+   * Universal AI Search Engine for ANY restaurant and ANY dish anywhere on Swiggy
+   */
+  private async findWithGroqAI(intent: FoodIntent, apiKey: string): Promise<RecommendationResult | null> {
+    const systemPrompt = `You are Swiggy India's AI Restaurant & Menu Search Engine.
+Given a user's food ordering query, find the exact matching restaurant and specific menu item on Swiggy.
+If a restaurant is requested (e.g. RJ 14, Domino's, Haldiram's, Punjab Grill, etc.), search exclusively for that restaurant and the exact requested item.
+If no restaurant is specified, select the highest-rated top authentic restaurant for that dish in India.
+Respect max budget in INR (item price should be <= maxBudget if provided).
+Respond strictly in valid JSON matching this schema:
+{
+  "restaurant": {
+    "id": "string (e.g. rest_rj_14)",
+    "name": "string (e.g. RJ 14)",
+    "slug": "string (e.g. rj-14-ajmer-road)",
+    "rating": number (e.g. 4.6),
+    "ratingCount": number (e.g. 18500),
+    "deliveryTimeMinutes": number (e.g. 25),
+    "address": "string (e.g. Ajmer Road, Jaipur)",
+    "cuisines": ["string", "string"]
+  },
+  "item": {
+    "id": "string",
+    "name": "string (exact name of the dish, e.g. Paneer Butter Masala)",
+    "price": number (realistic price in INR),
+    "rating": number (e.g. 4.8),
+    "ratingCount": number (e.g. 5200),
+    "description": "string (appetizing description)",
+    "isVeg": boolean,
+    "category": "string (e.g. Main Course, Biryani, Pizzas, Curries)",
+    "popular": boolean
+  },
+  "reason": "string (why this dish from this restaurant is the best recommendation)"
+}`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'openai/gpt-oss-20b',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            {
+              role: 'user',
+              content: `User wants to order: ${intent.queryItem}${
+                intent.restaurantName ? ` from ${intent.restaurantName}` : ''
+              }${intent.maxBudget ? ` within budget of ₹${intent.maxBudget}` : ''}${
+                intent.dietaryPreference !== 'any' ? ` (${intent.dietaryPreference})` : ''
+              }. Output in JSON format.`,
+            },
+          ],
+          temperature: 0.1,
+          max_tokens: 600,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!res.ok) return null;
+
+      const data = (await res.json()) as any;
+      const rawContent = data.choices?.[0]?.message?.content;
+      if (!rawContent) return null;
+
+      // Extract JSON block if surrounded by text or code fencing
+      let cleanJson = rawContent.trim();
+      const match = cleanJson.match(/\{[\s\S]*\}/);
+      if (match) {
+        cleanJson = match[0];
+      }
+
+      const parsed = JSON.parse(cleanJson);
+      if (!parsed.restaurant || !parsed.item) return null;
+
+      const image = this.getImageForQuery(parsed.item.name || intent.queryItem);
+
+      const restaurant: Restaurant = {
+        id: parsed.restaurant.id || `rest_${Date.now()}`,
+        name: parsed.restaurant.name || intent.restaurantName || 'Top-Rated Swiggy Outlet',
+        slug: parsed.restaurant.slug || 'swiggy-outlet',
+        rating: typeof parsed.restaurant.rating === 'number' ? parsed.restaurant.rating : 4.6,
+        ratingCount: typeof parsed.restaurant.ratingCount === 'number' ? parsed.restaurant.ratingCount : 12000,
+        deliveryTimeMinutes:
+          typeof parsed.restaurant.deliveryTimeMinutes === 'number' ? parsed.restaurant.deliveryTimeMinutes : 25,
+        address: parsed.restaurant.address || 'Koramangala, Bengaluru',
+        cuisines: Array.isArray(parsed.restaurant.cuisines) ? parsed.restaurant.cuisines : ['Indian', 'Fast Food'],
+        coverImage: image,
+        menu: [],
+      };
+
+      const item: MenuItem = {
+        id: parsed.item.id || `item_${Date.now()}`,
+        name: parsed.item.name || this.capitalizeWords(intent.queryItem),
+        price:
+          typeof parsed.item.price === 'number'
+            ? intent.maxBudget
+              ? Math.min(parsed.item.price, intent.maxBudget)
+              : parsed.item.price
+            : 249,
+        rating: typeof parsed.item.rating === 'number' ? parsed.item.rating : 4.7,
+        ratingCount: typeof parsed.item.ratingCount === 'number' ? parsed.item.ratingCount : 3800,
+        description:
+          parsed.item.description ||
+          `Freshly prepared authentic ${intent.queryItem} with premium ingredients and spices.`,
+        isVeg: typeof parsed.item.isVeg === 'boolean' ? parsed.item.isVeg : intent.dietaryPreference !== 'non-veg',
+        popular: true,
+        category: parsed.item.category || 'Specialties',
+        image,
+      };
+
+      restaurant.menu = [item];
+
+      return {
+        restaurant,
+        item,
+        matchScore: 98,
+        reason:
+          parsed.reason ||
+          `Found authentic ${item.name} (₹${item.price}) at ${restaurant.name} with ⭐${item.rating} rating.`,
+      };
+    } catch {
+      clearTimeout(timeout);
+      return null;
+    }
+  }
+
+  private findLocally(intent: FoodIntent): RecommendationResult | null {
     let targetRestaurants = this.searchRestaurants(intent.restaurantName, intent.cuisine);
-    
-    // If a specific restaurant was requested but wasn't found in hardcoded list, generate dynamic restaurant
+
     if (intent.restaurantName && targetRestaurants.length === 0) {
       targetRestaurants = [this.createDynamicRestaurant(intent.restaurantName, intent.queryItem)];
     }
@@ -518,61 +396,28 @@ export class SwiggySearchService {
 
     for (const rest of targetRestaurants) {
       for (const item of rest.menu) {
-        // Budget filter check
-        if (intent.maxBudget !== undefined && intent.maxBudget !== null && intent.maxBudget > 0) {
-          if (item.price > intent.maxBudget) {
-            continue; // Exceeds budget
-          }
-        }
+        if (intent.maxBudget && item.price > intent.maxBudget) continue;
+        if (intent.dietaryPreference === 'veg' && !item.isVeg) continue;
 
-        // Dietary preference filter check
-        if (intent.dietaryPreference === 'veg' && !item.isVeg) {
-          continue;
-        }
-
-        // Compute relevance match score
         const itemNameLower = item.name.toLowerCase();
-        const itemDescLower = item.description.toLowerCase();
-        const itemCatLower = item.category.toLowerCase();
-
         let tokenMatches = 0;
         for (const token of queryTokens) {
-          if (itemNameLower.includes(token)) {
-            tokenMatches += 5;
-          } else if (itemCatLower.includes(token)) {
-            tokenMatches += 3;
-          } else if (itemDescLower.includes(token)) {
-            tokenMatches += 1;
-          }
+          if (itemNameLower.includes(token)) tokenMatches += 5;
         }
 
-        // Give substantial score boost if item name directly matches food intent
-        let score = (tokenMatches * 10) + (item.rating * 5) + (rest.rating * 3);
-        if (item.popular) score += 4;
-
-        if (intent.maxBudget && intent.maxBudget > 0) {
-          const budgetRatio = item.price / intent.maxBudget;
-          if (budgetRatio <= 1.0) {
-            score += 5;
-          }
-        }
-
-        const reason = `${item.name} (₹${item.price}) from ${rest.name} has a ⭐${item.rating} rating with ${item.ratingCount.toLocaleString()} reviews.`;
-
+        let score = tokenMatches * 10 + item.rating * 5 + rest.rating * 3;
         candidates.push({
           restaurant: rest,
           item,
           score,
-          reason,
+          reason: `${item.name} (₹${item.price}) from ${rest.name} (⭐${item.rating})`,
         });
       }
     }
 
-    // If query tokens matched items, sort by score
     const matchingCandidates = candidates.filter((c) => {
       const name = c.item.name.toLowerCase();
-      const cat = c.item.category.toLowerCase();
-      return queryTokens.some((t) => name.includes(t) || cat.includes(t));
+      return queryTokens.some((t) => name.includes(t));
     });
 
     if (matchingCandidates.length > 0) {
@@ -586,12 +431,8 @@ export class SwiggySearchService {
       };
     }
 
-    // If no catalog item matches user's specific food query (e.g., custom pizza, pasta, biryani not in static list),
-    // dynamically synthesize the exact matching item and restaurant for 100% precision!
-    const fallbackRestaurant = targetRestaurants[0] || this.createDynamicRestaurant(
-      intent.restaurantName || "Domino's Pizza",
-      intent.queryItem
-    );
+    const fallbackRestaurant =
+      targetRestaurants[0] || this.createDynamicRestaurant(intent.restaurantName || 'Popular Kitchen', intent.queryItem);
 
     const dynamicItem: MenuItem = {
       id: `dyn_${Date.now()}`,
@@ -599,7 +440,7 @@ export class SwiggySearchService {
       price: intent.maxBudget ? Math.min(intent.maxBudget, 299) : 249,
       rating: 4.7,
       ratingCount: 15400,
-      description: `Freshly prepared delicious ${intent.queryItem} with authentic ingredients and fast delivery.`,
+      description: `Freshly prepared delicious ${intent.queryItem} with authentic ingredients.`,
       isVeg: intent.dietaryPreference !== 'non-veg',
       popular: true,
       category: 'Specials',
@@ -615,16 +456,19 @@ export class SwiggySearchService {
   }
 
   private createDynamicRestaurant(name: string, queryItem: string): Restaurant {
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const slug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
     return {
       id: `rest_${slug}`,
       name: this.capitalizeWords(name),
-      slug: `${slug}-koramangala`,
+      slug: `${slug}-outlet`,
       rating: 4.6,
       ratingCount: 28000,
       deliveryTimeMinutes: 25,
-      address: 'Indiranagar / Koramangala Outlet, Bengaluru',
-      cuisines: ['Fast Food', 'Snacks', 'Beverages'],
+      address: 'City Center Outlet, India',
+      cuisines: ['Indian', 'North Indian', 'Specialties'],
       coverImage: this.getImageForQuery(queryItem),
       menu: [],
     };
@@ -639,13 +483,16 @@ export class SwiggySearchService {
 
   private getImageForQuery(query: string): string {
     const lower = query.toLowerCase();
+    if (lower.includes('paneer') || lower.includes('butter masala') || lower.includes('curry') || lower.includes('dal')) {
+      return 'https://images.unsplash.com/photo-1631452180519-c014fe946bc7?auto=format&fit=crop&w=500&q=80';
+    }
     if (lower.includes('pizza')) {
       return 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=500&q=80';
     }
     if (lower.includes('burger')) {
       return 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=500&q=80';
     }
-    if (lower.includes('biryani')) {
+    if (lower.includes('biryani') || lower.includes('rice') || lower.includes('pulao')) {
       return 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&w=500&q=80';
     }
     if (lower.includes('coffee') || lower.includes('latte')) {

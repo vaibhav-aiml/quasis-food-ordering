@@ -41,7 +41,7 @@ describe('2. SwiggySearchService', () => {
     expect(results[0].name).toBe('Third Wave Coffee');
   });
 
-  it('filters items strictly within the budget limit', () => {
+  it('filters items strictly within the budget limit', async () => {
     const intent: FoodIntent = {
       queryItem: 'cold coffee',
       maxBudget: 190,
@@ -49,7 +49,7 @@ describe('2. SwiggySearchService', () => {
       dietaryPreference: 'any',
     };
 
-    const recommendation = searchService.findBestRecommendation(intent);
+    const recommendation = await searchService.findBestRecommendation(intent);
     expect(recommendation).toBeDefined();
     expect(recommendation!.item.price).toBeLessThanOrEqual(190);
   });
