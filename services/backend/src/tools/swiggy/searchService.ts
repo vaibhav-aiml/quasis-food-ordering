@@ -541,15 +541,21 @@ export class SwiggySearchService {
   /**
    * Generates native Swiggy deep link and universal web fallback
    */
-  public generateDeepLinks(restaurant: Restaurant | { id: string; slug: string }, item: MenuItem): {
+  public generateDeepLinks(
+    restaurant: Restaurant | { id: string; name?: string; slug: string },
+    item: MenuItem
+  ): {
     deepLink: string;
     webUrl: string;
   } {
-    // Native Swiggy Android/iOS Deep Link Schema
-    const deepLink = `swiggy://restaurant?restaurant_id=${encodeURIComponent(restaurant.id)}&item_id=${encodeURIComponent(item.id)}`;
-    
-    // Standard Swiggy Web Fallback URL
-    const webUrl = `https://www.swiggy.com/restaurants/${restaurant.slug}-${encodeURIComponent(restaurant.id)}?item=${encodeURIComponent(item.id)}`;
+    const restaurantName = (restaurant as any).name || restaurant.slug.replace(/-/g, ' ');
+    const query = `${item.name} ${restaurantName}`.trim();
+
+    // 1. Native Swiggy Explore / Search Intent: opens Swiggy directly into search for that item at that restaurant
+    const deepLink = `swiggy://explore?query=${encodeURIComponent(query)}`;
+
+    // 2. Swiggy Restaurant Direct Web / App Universal Link
+    const webUrl = `https://www.swiggy.com/restaurants/${restaurant.slug}`;
 
     return {
       deepLink,
