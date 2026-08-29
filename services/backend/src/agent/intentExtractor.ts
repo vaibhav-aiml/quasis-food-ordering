@@ -9,14 +9,14 @@ export class IntentExtractor {
     const prompt = inputPrompt.trim();
     if (!prompt) {
       return FoodIntentSchema.parse({
-        queryItem: 'coffee',
+        queryItem: 'cold coffee',
         maxBudget: 200,
         restaurantName: null,
         dietaryPreference: 'any',
       });
     }
 
-    // 1. If GROQ_API_KEY is configured, use Groq's high-speed LLaMA-3.3-70B model
+    // 1. If GROQ_API_KEY is configured, use Groq's high-speed model
     if (process.env.GROQ_API_KEY) {
       try {
         const groqIntent = await this.extractWithGroq(prompt, process.env.GROQ_API_KEY);
@@ -39,11 +39,12 @@ export class IntentExtractor {
   private static async extractWithGroq(prompt: string, apiKey: string): Promise<FoodIntent | null> {
     const systemPrompt = `You are a food ordering intent parser for Swiggy India.
 Extract the target food/beverage item, maximum budget in INR (numbers only), specific restaurant name (if mentioned, otherwise null), and dietary preference ('veg', 'non-veg', or 'any').
+Important: Do not include articles like 'a', 'an', 'the' in queryItem.
 Respond strictly in valid JSON matching this schema:
 {
-  "queryItem": "string (e.g. cold coffee, chicken burger, biryani)",
+  "queryItem": "string (e.g. farmhouse pizza, cold coffee, chicken burger, biryani)",
   "maxBudget": number or null (e.g. 200),
-  "restaurantName": "string or null (e.g. Third Wave Coffee, Truffles)",
+  "restaurantName": "string or null (e.g. Domino's Pizza, Third Wave Coffee, Truffles)",
   "dietaryPreference": "veg" | "non-veg" | "any"
 }`;
 
@@ -81,8 +82,11 @@ Respond strictly in valid JSON matching this schema:
       if (!content) return null;
 
       const parsed = JSON.parse(content);
+      let queryItem = (parsed.queryItem || '').replace(/^(?:a|an|the)\s+/i, '').trim();
+      if (!queryItem) queryItem = 'farmhouse pizza';
+
       return {
-        queryItem: parsed.queryItem || 'cold coffee',
+        queryItem,
         maxBudget: typeof parsed.maxBudget === 'number' ? parsed.maxBudget : undefined,
         restaurantName: parsed.restaurantName || null,
         dietaryPreference: ['veg', 'non-veg', 'any'].includes(parsed.dietaryPreference)
@@ -121,9 +125,15 @@ Respond strictly in valid JSON matching this schema:
       }
     }
 
-    // 2. Extract Restaurant Name if mentioned (e.g., "from Third Wave Coffee", "at Truffles", "Starbucks", "Blue Tokai")
+    // 2. Extract Restaurant Name if mentioned
     let restaurantName: string | null = null;
     const knownRestaurants = [
+      { name: "Domino's Pizza", aliases: ["domino's pizza", 'dominos pizza', "domino's", 'dominos'] },
+      { name: 'Pizza Hut', aliases: ['pizza hut'] },
+      { name: 'Burger King', aliases: ['burger king', 'bk'] },
+      { name: "McDonald's", aliases: ["mcdonald's", 'mcdonalds', 'mcd'] },
+      { name: 'KFC', aliases: ['kfc', 'kentucky fried chicken'] },
+      { name: 'Subway', aliases: ['subway'] },
       { name: 'Third Wave Coffee', aliases: ['third wave coffee', 'third wave', 'twc'] },
       { name: 'Blue Tokai Coffee Roasters', aliases: ['blue tokai coffee roasters', 'blue tokai', 'bt'] },
       { name: 'Truffles', aliases: ['truffles', 'truffle'] },
@@ -131,6 +141,8 @@ Respond strictly in valid JSON matching this schema:
       { name: 'Meghana Foods', aliases: ['meghana foods', 'meghana biryani', 'meghana'] },
       { name: 'California Burrito', aliases: ['california burrito'] },
       { name: 'Chai Point', aliases: ['chai point'] },
+      { name: 'Behrouz Biryani', aliases: ['behrouz biryani', 'behrouz'] },
+      { name: "Haldiram's", aliases: ["haldiram's", 'haldirams'] },
     ];
 
     for (const rest of knownRestaurants) {
@@ -160,7 +172,7 @@ Respond strictly in valid JSON matching this schema:
     let dietaryPreference: 'veg' | 'non-veg' | 'any' = 'any';
     if (/\b(pure\s+veg|vegetarian|veg)\b/i.test(prompt) && !/\b(non-veg|nonveg)\b/i.test(prompt)) {
       dietaryPreference = 'veg';
-    } else if (/\b(non-veg|nonveg|chicken|mutton|egg|meat)\b/i.test(prompt)) {
+    } else if (/\b(non-veg|nonveg|chicken|mutton|egg|meat|beef|pork)\b/i.test(prompt)) {
       dietaryPreference = 'non-veg';
     }
 
@@ -169,12 +181,12 @@ Respond strictly in valid JSON matching this schema:
 
     // Remove noise phrases
     const noisePhrases = [
-      /find(?:\s+me)?/gi,
-      /get(?:\s+me)?/gi,
-      /order(?:\s+me)?/gi,
-      /buy(?:\s+me)?/gi,
-      /search(?:\s+for)?/gi,
-      /i\s+want(?:\s+to\s+order)?/gi,
+      /order\s+(?:me\s+)?(?:a|an|the)?/gi,
+      /find\s+(?:me\s+)?(?:a|an|the)?/gi,
+      /get\s+(?:me\s+)?(?:a|an|the)?/gi,
+      /buy\s+(?:me\s+)?(?:a|an|the)?/gi,
+      /search\s+(?:for\s+)?(?:a|an|the)?/gi,
+      /i\s+want\s+(?:to\s+order\s+)?(?:a|an|the)?/gi,
       /best-?rated/gi,
       /best/gi,
       /top-?rated/gi,
@@ -205,11 +217,12 @@ Respond strictly in valid JSON matching this schema:
     // Clean punctuation and excess whitespace
     queryItem = queryItem
       .replace(/[^\w\s-]/g, ' ')
+      .replace(/^(?:a|an|the)\s+/i, '')
       .replace(/\s+/g, ' ')
       .trim();
 
     if (!queryItem || queryItem.length < 2) {
-      queryItem = 'cold coffee';
+      queryItem = 'pizza';
     }
 
     return {

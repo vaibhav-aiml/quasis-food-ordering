@@ -70,7 +70,7 @@ describe('3. PipelineOrchestrator', () => {
     const sessionId = orchestrator.createSession('Get me cold coffee under 200');
 
     // Wait for pipeline stages to progress
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 5000));
 
     const state = orchestrator.getSessionState(sessionId);
     expect(state).toBeDefined();

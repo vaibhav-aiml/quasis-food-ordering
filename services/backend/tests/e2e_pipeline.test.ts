@@ -37,7 +37,7 @@ describe('End-to-End Live Food Ordering Pipeline API Test', () => {
 
       // 2. Poll for pipeline completion
       let stateData: any = null;
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 40; i++) {
         await new Promise((resolve) => setTimeout(resolve, 200));
         const stateRes = await fetch(`http://localhost:${port}/api/order/state/${sessionId}`);
         stateData = (await stateRes.json()) as any;

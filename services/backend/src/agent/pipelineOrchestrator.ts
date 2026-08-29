@@ -125,7 +125,7 @@ export class PipelineOrchestrator {
       {}
     );
 
-    await this.sleep(400);
+    await this.sleep(1200);
 
     const intent: FoodIntent = await IntentExtractor.extract(prompt);
     session.intent = intent;
@@ -153,7 +153,7 @@ export class PipelineOrchestrator {
       { intent }
     );
 
-    await this.sleep(500);
+    await this.sleep(1500);
 
     const matchedRestaurants = this.searchService.searchRestaurants(
       intent.restaurantName,
@@ -187,7 +187,7 @@ export class PipelineOrchestrator {
       {}
     );
 
-    await this.sleep(450);
+    await this.sleep(1400);
 
     const bestResult = this.searchService.findBestRecommendation(intent);
 
@@ -236,6 +236,8 @@ export class PipelineOrchestrator {
         },
       }
     );
+
+    await this.sleep(600);
 
     // --- STAGE 4: Human-In-The-Loop Approval Card Presentation ---
     this.emitEvent(
