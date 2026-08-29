@@ -3,6 +3,7 @@ import { FoodIntent, FoodIntentSchema } from '../tools/swiggy/types.js';
 export class IntentExtractor {
   /**
    * Extracts structured FoodIntent from natural language prompt or voice transcript.
+   * Prioritizes Groq API (GROQ_API_KEY) if available, or falls back to robust local rules.
    */
   public static async extract(inputPrompt: string): Promise<FoodIntent> {
     const prompt = inputPrompt.trim();
@@ -15,9 +16,83 @@ export class IntentExtractor {
       });
     }
 
-    // Attempt rule-based heuristic extraction first for instant speed & zero-dependency local execution
+    // 1. If GROQ_API_KEY is configured, use Groq's high-speed LLaMA-3.3-70B model
+    if (process.env.GROQ_API_KEY) {
+      try {
+        const groqIntent = await this.extractWithGroq(prompt, process.env.GROQ_API_KEY);
+        if (groqIntent) {
+          return FoodIntentSchema.parse(groqIntent);
+        }
+      } catch (err) {
+        console.warn('Groq extraction fallback to rules:', err);
+      }
+    }
+
+    // 2. Fallback to deterministic NLP / Regex extraction
     const extracted = this.extractWithRules(prompt);
     return FoodIntentSchema.parse(extracted);
+  }
+
+  /**
+   * High-speed LLM extraction via Groq API (OpenAI-compatible)
+   */
+  private static async extractWithGroq(prompt: string, apiKey: string): Promise<FoodIntent | null> {
+    const systemPrompt = `You are a food ordering intent parser for Swiggy India.
+Extract the target food/beverage item, maximum budget in INR (numbers only), specific restaurant name (if mentioned, otherwise null), and dietary preference ('veg', 'non-veg', or 'any').
+Respond strictly in valid JSON matching this schema:
+{
+  "queryItem": "string (e.g. cold coffee, chicken burger, biryani)",
+  "maxBudget": number or null (e.g. 200),
+  "restaurantName": "string or null (e.g. Third Wave Coffee, Truffles)",
+  "dietaryPreference": "veg" | "non-veg" | "any"
+}`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.1,
+          max_tokens: 150,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        return null;
+      }
+
+      const json = (await res.json()) as any;
+      const content = json.choices?.[0]?.message?.content;
+      if (!content) return null;
+
+      const parsed = JSON.parse(content);
+      return {
+        queryItem: parsed.queryItem || 'cold coffee',
+        maxBudget: typeof parsed.maxBudget === 'number' ? parsed.maxBudget : undefined,
+        restaurantName: parsed.restaurantName || null,
+        dietaryPreference: ['veg', 'non-veg', 'any'].includes(parsed.dietaryPreference)
+          ? parsed.dietaryPreference
+          : 'any',
+      };
+    } catch {
+      clearTimeout(timeout);
+      return null;
+    }
   }
 
   /**
@@ -67,10 +142,15 @@ export class IntentExtractor {
 
     // If not matched by known list, check prepositions "from [Restaurant]", "at [Restaurant]"
     if (!restaurantName) {
-      const fromMatch = prompt.match(/(?:from|at|in)\s+([A-Za-z0-9\s'&]+?)(?:\s+(?:under|within|below|for|with|less|<=)|$)/i);
+      const fromMatch = prompt.match(
+        /(?:from|at|in)\s+([A-Za-z0-9\s'&]+?)(?:\s+(?:under|within|below|for|with|less|<=)|$)/i
+      );
       if (fromMatch && fromMatch[1]) {
         const candidate = fromMatch[1].trim();
-        if (candidate.length > 2 && !['swiggy', 'zomato', 'here', 'nearby', 'anywhere'].includes(candidate.toLowerCase())) {
+        if (
+          candidate.length > 2 &&
+          !['swiggy', 'zomato', 'here', 'nearby', 'anywhere'].includes(candidate.toLowerCase())
+        ) {
           restaurantName = candidate;
         }
       }
