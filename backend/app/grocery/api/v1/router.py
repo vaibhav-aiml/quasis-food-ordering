@@ -15,3 +15,6 @@ from app.grocery.api.v1.endpoints import health, requests
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(requests.router)
+
+# Alias for backwards compatibility with main.py
+api_v1_router = api_router

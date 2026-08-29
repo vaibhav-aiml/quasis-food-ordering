@@ -40,6 +40,11 @@ mobile/build/
 **/build/
 *.iml
 local.properties
-video_frames/
-video_frames_2/
-
+# --- Node / TypeScript / Expo ---
+node_modules/
+dist/
+.expo/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

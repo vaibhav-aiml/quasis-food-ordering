@@ -1,31 +1,23 @@
-"""Application entrypoint.
+"""Application entrypoint for Quasis Quick-Commerce Backend.
 
 Uses an application-factory pattern (``create_app()``) rather than a bare
-module-level ``app = FastAPI()``. This is what lets tests build a fresh,
-isolated app instance — optionally with overridden settings — instead of
-importing (and mutating) one shared singleton. The module-level ``app`` at
-the bottom of this file exists purely for ``uvicorn app.main:app`` to find.
+module-level ``app = FastAPI()``, enabling isolated test setups while serving
+the singleton ``app`` for ``uvicorn app.main:app``.
 """
 
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger, setup_logging
+from app.grocery.api.v1.router import api_v1_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    """Build and configure a ``FastAPI`` application instance.
-
-    Args:
-        settings: Optional explicit ``Settings`` to use instead of the
-            cached process-wide instance. Tests pass this to run against
-            controlled configuration without touching environment
-            variables or the ``lru_cache`` singleton.
-    """
-
+    """Build and configure a ``FastAPI`` application instance."""
     resolved_settings = settings or get_settings()
     setup_logging(resolved_settings)
     logger = get_logger("app.startup")
@@ -43,28 +35,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         logger.info("application_shutdown")
 
     app = FastAPI(
-        title=resolved_settings.app_name,
+        title="Quasis Quick-Commerce Backend",
         version=resolved_settings.app_version,
         lifespan=lifespan,
     )
 
-    # If explicit settings were provided (e.g. by a test), make sure every
-    # `Depends(get_settings)` in the app resolves to that same instance
-    # rather than the cached process-wide one.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     if settings is not None:
         app.dependency_overrides[get_settings] = lambda: resolved_settings
 
-    try:
-        from app.grocery.api.v1.router import api_router as grocery_router
-        app.include_router(grocery_router, prefix="/v1")
-    except ImportError:
-        pass
+    # Mount grocery router under /v1 and /api/v1
+    app.include_router(api_v1_router, prefix="/v1")
+    app.include_router(api_v1_router, prefix="/api/v1")
 
-    from app.food_ordering.api.router import food_router
-    app.include_router(food_router, prefix="/v1/food")
+    if resolved_settings.app_env != "test":
+        @app.get("/health")
+        async def health_check():
+            return {"status": "ok"}
 
     return app
 
 
-# What `uvicorn app.main:app --reload` imports and serves.
+# Module-level application instance for uvicorn
 app = create_app()

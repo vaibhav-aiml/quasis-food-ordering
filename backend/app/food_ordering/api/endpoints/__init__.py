@@ -1,1 +1,0 @@
-"""Food ordering API endpoints."""

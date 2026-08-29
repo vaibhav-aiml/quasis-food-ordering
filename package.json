@@ -1,0 +1,16 @@
+{
+  "name": "quasis-food-ordering",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "services/*"
+  ],
+  "scripts": {
+    "backend:dev": "npm --prefix services/backend run dev",
+    "backend:build": "npm --prefix services/backend run build",
+    "backend:test": "npm --prefix services/backend run test",
+    "mobile:start": "npm --prefix apps/mobile start",
+    "test": "npm --prefix services/backend run test"
+  }
+}
