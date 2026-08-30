@@ -4,7 +4,7 @@ import { WhisperTranscriber } from '../agent/whisperTranscriber.js';
 import { SwiggySearchService } from '../tools/swiggy/searchService.js';
 import { PipelineEvent } from '../tools/swiggy/types.js';
 
-// In-memory sliding window rate limiter for audio transcription (per IP)
+// In-memory sliding window rate limiter for audio transcription (per IP) with automatic stale key eviction
 const transcriptionRateLimitMap = new Map<string, number[]>();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
 const MAX_TRANSCRIPTION_REQUESTS_PER_MIN = 20; // Max 20 requests per minute per IP
@@ -23,6 +23,19 @@ function isRateLimited(ip: string): boolean {
   transcriptionRateLimitMap.set(ip, validTimestamps);
   return false;
 }
+
+// Periodic cleanup every 5 minutes to prune any expired IP entries from memory
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, timestamps] of transcriptionRateLimitMap.entries()) {
+    const valid = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+    if (valid.length === 0) {
+      transcriptionRateLimitMap.delete(ip);
+    } else {
+      transcriptionRateLimitMap.set(ip, valid);
+    }
+  }
+}, 5 * 60 * 1000).unref?.();
 
 export function createRouter(
   orchestrator: PipelineOrchestrator,
