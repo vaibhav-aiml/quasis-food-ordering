@@ -33,9 +33,6 @@
         "MODIFY_AUDIO_SETTINGS"
       ]
     },
-    "plugins": [
-      "expo-audio"
-    ],
     "web": {
       "favicon": "./assets/favicon.png"
     }
