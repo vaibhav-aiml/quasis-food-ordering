@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { ApprovalCard } from '../components/ApprovalCard';
+import { OrderHistoryModal } from '../components/OrderHistoryModal';
 import { PipelineTrace } from '../components/PipelineTrace';
 import { VoiceRecorder } from '../components/VoiceRecorder';
 import {
@@ -24,6 +25,7 @@ import {
   submitFoodIntent,
   subscribeToPipeline,
 } from '../services/api';
+import { OrderStorage, StoredOrder } from '../services/orderStorage';
 
 export default function MainScreen() {
   const [prompt, setPrompt] = useState('Find the best-rated iced latte under 200');
@@ -46,10 +48,20 @@ export default function MainScreen() {
   const [apiHost, setApiHost] = useState(getApiBaseUrl());
   const [showSettings, setShowSettings] = useState(false);
 
+  // Order History & Favorites Modal State
+  const [showHistory, setShowHistory] = useState(false);
+  const [orderCount, setOrderCount] = useState(0);
+
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
 
+  const refreshOrderCount = async () => {
+    const list = await OrderStorage.getOrders();
+    setOrderCount(list.length);
+  };
+
   useEffect(() => {
+    refreshOrderCount();
     return () => {
       if (unsubscribeRef.current) {
         unsubscribeRef.current();
@@ -117,6 +129,19 @@ export default function MainScreen() {
                 deepLink: event.data.deepLink,
                 webUrl: event.data.webUrl,
               });
+
+              // Persist completed order to OrderStorage
+              if (event.data.recommendation) {
+                OrderStorage.saveOrder({
+                  sessionId: response.sessionId,
+                  prompt: textToRun,
+                  item: event.data.recommendation.item,
+                  restaurant: event.data.recommendation.restaurant,
+                  deepLink: event.data.deepLink,
+                  webUrl: event.data.webUrl,
+                  status: 'DISPATCHED',
+                }).then(() => refreshOrderCount());
+              }
             }
           }
 
@@ -138,13 +163,25 @@ export default function MainScreen() {
   };
 
   const handleApprove = async () => {
-    if (!sessionId) return;
+    if (!sessionId || !recommendation) return;
     try {
       const result = await approveOrder(sessionId, true);
       setCompletedState({
         deepLink: result.deepLink,
         webUrl: result.webUrl,
       });
+
+      // Persist approved order
+      await OrderStorage.saveOrder({
+        sessionId,
+        prompt,
+        item: recommendation.item,
+        restaurant: recommendation.restaurant,
+        deepLink: result.deepLink,
+        webUrl: result.webUrl,
+        status: 'DISPATCHED',
+      });
+      await refreshOrderCount();
     } catch (err: any) {
       Alert.alert('Approval Error', err.message);
     }
@@ -161,6 +198,46 @@ export default function MainScreen() {
     setApiBaseUrl(apiHost);
     setShowSettings(false);
     Alert.alert('Backend URL Updated', `API Endpoint set to: ${apiHost}`);
+  };
+
+  // Instant dispatch from order history (skips artificial pipeline search delays)
+  const handleInstantDispatchFromHistory = async (order: StoredOrder) => {
+    setRecommendation({
+      item: {
+        ...order.item,
+        rating: 4.6,
+        ratingCount: 1500,
+        popular: true,
+        category: order.item.category || 'Dishes',
+        image: order.item.image || '',
+        description: order.item.description || '',
+      },
+      restaurant: {
+        ...order.restaurant,
+        slug: order.restaurant.name.toLowerCase().replace(/\s+/g, '-'),
+        ratingCount: 2000,
+        cuisines: ['Popular'],
+        coverImage: order.restaurant.coverImage || '',
+      },
+      deepLink: order.deepLink,
+      webUrl: order.webUrl,
+    });
+
+    setCompletedState({
+      deepLink: order.deepLink,
+      webUrl: order.webUrl,
+    });
+
+    setPrompt(order.prompt || order.item.name);
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 200);
+  };
+
+  // Pipeline re-run from history
+  const handleRerunFromHistory = (query: string) => {
+    setPrompt(query);
+    handleStartPipeline(query);
   };
 
   return (
@@ -185,12 +262,30 @@ export default function MainScreen() {
             <Text style={styles.tagline}>Autonomous Food Ordering Pipeline</Text>
           </View>
 
-          <TouchableOpacity
-            style={styles.settingsButton}
-            onPress={() => setShowSettings(!showSettings)}
-          >
-            <Text style={styles.settingsIcon}>⚙️</Text>
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            {/* History & Favorites Button with Badge */}
+            <TouchableOpacity
+              style={styles.historyButton}
+              onPress={() => setShowHistory(true)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.historyIcon}>📜</Text>
+              {orderCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{orderCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            {/* Server Settings Button */}
+            <TouchableOpacity
+              style={styles.settingsButton}
+              onPress={() => setShowSettings(!showSettings)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.settingsIcon}>⚙️</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Backend Host Config Drawer (for physical Android device over Wi-Fi) */}
@@ -239,7 +334,7 @@ export default function MainScreen() {
           </View>
         </View>
 
-        {/* Voice Recorder & Preset Chips */}
+        {/* Voice Recorder with Groq Whisper & Preset Chips */}
         <VoiceRecorder
           onTranscriptReady={(transcript) => {
             setPrompt(transcript);
@@ -279,6 +374,17 @@ export default function MainScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Order History & Favorites Modal */}
+      <OrderHistoryModal
+        visible={showHistory}
+        onClose={() => {
+          setShowHistory(false);
+          refreshOrderCount();
+        }}
+        onInstantDispatch={handleInstantDispatchFromHistory}
+        onRerunPipeline={handleRerunFromHistory}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -327,6 +433,44 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     marginTop: 2,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  historyButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#161922',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#262c3d',
+    position: 'relative',
+  },
+  historyIcon: {
+    fontSize: 16,
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#fc8019',
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#0b0d13',
+  },
+  badgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '900',
   },
   settingsButton: {
     width: 38,

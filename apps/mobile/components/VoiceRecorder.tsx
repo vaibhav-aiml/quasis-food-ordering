@@ -1,11 +1,37 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { transcribeAudio } from '../services/api';
+
+// Conditionally import expo-audio and expo-file-system on native platforms
+let AudioModule: any = null;
+let AudioRecorder: any = null;
+let RecordingPresets: any = null;
+let FileSystem: any = null;
+
+if (Platform.OS !== 'web') {
+  try {
+    const ExpoAudio = require('expo-audio');
+    AudioModule = ExpoAudio.AudioModule;
+    AudioRecorder = ExpoAudio.AudioRecorder;
+    RecordingPresets = ExpoAudio.RecordingPresets;
+  } catch (e) {
+    console.warn('expo-audio load warning:', e);
+  }
+
+  try {
+    FileSystem = require('expo-file-system');
+  } catch (e) {
+    console.warn('expo-file-system load warning:', e);
+  }
+}
 
 interface VoiceRecorderProps {
   onTranscriptReady: (transcript: string) => void;
@@ -17,6 +43,8 @@ const PRESET_QUERIES = [
   'Get me cold coffee under 200 from Third Wave Coffee',
   'Truffles burger under 250',
   'Meghana special chicken biryani',
+  'Subway paneer tikka sub under 250',
+  'Domino\'s farmhouse pizza under 350',
 ];
 
 export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
@@ -24,7 +52,18 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
   isProcessing,
 }) => {
   const [isRecording, setIsRecording] = useState(false);
-  const [activePresetIndex, setActivePresetIndex] = useState(0);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string>(
+    'Tap mic to speak, or tap a preset below'
+  );
+
+  // Web MediaRecorder references
+  const mediaRecorderRef = useRef<any>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const mediaStreamRef = useRef<any>(null);
+
+  // Native AudioRecorder reference
+  const nativeRecorderRef = useRef<any>(null);
 
   // Waveform bar animations
   const bar1 = useRef(new Animated.Value(12)).current;
@@ -36,7 +75,12 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
   useEffect(() => {
     let animation: Animated.CompositeAnimation | null = null;
     if (isRecording) {
-      const createWaveAnimation = (anim: Animated.Value, min: number, max: number, duration: number) => {
+      const createWaveAnimation = (
+        anim: Animated.Value,
+        min: number,
+        max: number,
+        duration: number
+      ) => {
         return Animated.loop(
           Animated.sequence([
             Animated.timing(anim, {
@@ -74,27 +118,213 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
     };
   }, [isRecording]);
 
-  const toggleRecording = () => {
-    if (isRecording) {
-      setIsRecording(false);
-      // Simulate completed transcription from speech
-      const chosenQuery = PRESET_QUERIES[activePresetIndex % PRESET_QUERIES.length];
-      onTranscriptReady(chosenQuery);
-      setActivePresetIndex((prev) => prev + 1);
-    } else {
+  /**
+   * Starts recording on Web using MediaRecorder API
+   */
+  const startWebRecording = async () => {
+    try {
+      if (!navigator?.mediaDevices?.getUserMedia) {
+        throw new Error('Microphone recording is not supported in this browser.');
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      audioChunksRef.current = [];
+
+      let mimeType = 'audio/webm';
+      if (typeof MediaRecorder.isTypeSupported === 'function') {
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          mimeType = 'audio/webm;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4';
+        }
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.start(100); // chunk every 100ms
       setIsRecording(true);
-      // Auto-finish after 2.5 seconds if user leaves it running
-      setTimeout(() => {
-        setIsRecording((current) => {
-          if (current) {
-            const chosenQuery = PRESET_QUERIES[activePresetIndex % PRESET_QUERIES.length];
-            onTranscriptReady(chosenQuery);
-            setActivePresetIndex((prev) => prev + 1);
-            return false;
+      setStatusMessage('🎙️ Listening... Tap mic when done speaking');
+    } catch (err: any) {
+      console.warn('Web mic recording error:', err);
+      Alert.alert(
+        'Microphone Access Required',
+        `Could not access microphone: ${err.message || 'Permission denied'}.\nYou can also use the preset buttons below.`
+      );
+      setStatusMessage('⚠️ Microphone error. Use presets or type above.');
+    }
+  };
+
+  /**
+   * Stops recording on Web and sends audio to Groq Whisper
+   */
+  const stopWebRecording = async () => {
+    return new Promise<void>((resolve) => {
+      const mediaRecorder = mediaRecorderRef.current;
+      if (!mediaRecorder) {
+        setIsRecording(false);
+        resolve();
+        return;
+      }
+
+      mediaRecorder.onstop = async () => {
+        setIsRecording(false);
+        setIsTranscribing(true);
+        setStatusMessage('⚡ Transcribing with Groq Whisper (large-v3)...');
+
+        try {
+          // Stop media tracks
+          if (mediaStreamRef.current) {
+            mediaStreamRef.current.getTracks().forEach((track: any) => track.stop());
+            mediaStreamRef.current = null;
           }
-          return false;
+
+          const blob = new Blob(audioChunksRef.current, {
+            type: mediaRecorder.mimeType || 'audio/webm',
+          });
+
+          // Convert Blob to base64
+          const reader = new FileReader();
+          reader.readAsDataURL(blob);
+          reader.onloadend = async () => {
+            const base64Data = (reader.result as string) || '';
+            try {
+              const res = await transcribeAudio(base64Data, blob.type);
+              setIsTranscribing(false);
+              if (res.success && res.text) {
+                setStatusMessage(`✅ Heard: "${res.text}"`);
+                onTranscriptReady(res.text);
+              } else {
+                setStatusMessage('⚠️ Could not recognize speech. Try again or use presets.');
+              }
+            } catch (apiErr: any) {
+              setIsTranscribing(false);
+              console.warn('Whisper API call failed:', apiErr);
+              setStatusMessage('⚠️ Whisper transcription failed. Check backend connection.');
+            }
+            resolve();
+          };
+          reader.onerror = () => {
+            setIsTranscribing(false);
+            setStatusMessage('⚠️ Error reading audio.');
+            resolve();
+          };
+        } catch (err) {
+          setIsTranscribing(false);
+          setStatusMessage('⚠️ Error processing audio.');
+          resolve();
+        }
+      };
+
+      mediaRecorder.stop();
+    });
+  };
+
+  /**
+   * Starts recording on Native device using expo-audio
+   */
+  const startNativeRecording = async () => {
+    try {
+      if (AudioModule && AudioModule.requestRecordingPermissionsAsync) {
+        const permission = await AudioModule.requestRecordingPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('Permission Denied', 'Microphone permission is required for voice ordering.');
+          return;
+        }
+      }
+
+      const preset = RecordingPresets?.HIGH_QUALITY || {};
+      const recorder = new AudioRecorder(preset);
+      nativeRecorderRef.current = recorder;
+
+      await recorder.recordAsync();
+      setIsRecording(true);
+      setStatusMessage('🎙️ Listening... Tap mic when done speaking');
+    } catch (err: any) {
+      console.warn('Native recording start error:', err);
+      // Fallback: If native recording fails in simulator, notify user gracefully
+      Alert.alert(
+        'Recording Not Available',
+        `Device audio recorder encountered an issue: ${err.message}.\nPlease use preset buttons or search input.`
+      );
+      setStatusMessage('⚠️ Audio not available on this device. Use presets below.');
+    }
+  };
+
+  /**
+   * Stops recording on Native device and sends audio to Groq Whisper
+   */
+  const stopNativeRecording = async () => {
+    const recorder = nativeRecorderRef.current;
+    if (!recorder) {
+      setIsRecording(false);
+      return;
+    }
+
+    try {
+      setIsRecording(false);
+      setIsTranscribing(true);
+      setStatusMessage('⚡ Transcribing with Groq Whisper (large-v3)...');
+
+      await recorder.stopAsync();
+      const uri = recorder.uri;
+
+      if (!uri) {
+        throw new Error('No recorded audio file URI found.');
+      }
+
+      // Read file as base64 using FileSystem
+      let base64Audio = '';
+      if (FileSystem && FileSystem.readAsStringAsync) {
+        base64Audio = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType?.Base64 || 'base64',
         });
-      }, 2500);
+      }
+
+      if (!base64Audio) {
+        throw new Error('Failed to encode audio file.');
+      }
+
+      const res = await transcribeAudio(base64Audio, 'audio/m4a');
+      setIsTranscribing(false);
+
+      if (res.success && res.text) {
+        setStatusMessage(`✅ Heard: "${res.text}"`);
+        onTranscriptReady(res.text);
+      } else {
+        setStatusMessage('⚠️ Could not recognize speech. Try again or tap preset.');
+      }
+    } catch (err: any) {
+      setIsTranscribing(false);
+      console.warn('Native recording stop error:', err);
+      setStatusMessage('⚠️ Whisper transcription failed. Try again or tap preset.');
+    } finally {
+      nativeRecorderRef.current = null;
+    }
+  };
+
+  const toggleRecording = async () => {
+    if (isProcessing || isTranscribing) return;
+
+    if (isRecording) {
+      if (Platform.OS === 'web') {
+        await stopWebRecording();
+      } else {
+        await stopNativeRecording();
+      }
+    } else {
+      if (Platform.OS === 'web') {
+        await startWebRecording();
+      } else {
+        await startNativeRecording();
+      }
     }
   };
 
@@ -109,7 +339,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
               key={index}
               style={styles.chip}
               onPress={() => onTranscriptReady(query)}
-              disabled={isProcessing || isRecording}
+              disabled={isProcessing || isRecording || isTranscribing}
               activeOpacity={0.7}
             >
               <Text style={styles.chipText} numberOfLines={1}>
@@ -126,10 +356,10 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
           style={[
             styles.micButton,
             isRecording && styles.micButtonActive,
-            isProcessing && styles.micButtonDisabled,
+            (isProcessing || isTranscribing) && styles.micButtonDisabled,
           ]}
           onPress={toggleRecording}
-          disabled={isProcessing}
+          disabled={isProcessing || isTranscribing}
           activeOpacity={0.8}
         >
           {isRecording ? (
@@ -141,16 +371,18 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
               <Animated.View style={[styles.waveBar, { height: bar5 }]} />
             </View>
           ) : (
-            <Text style={styles.micIcon}>🎙️</Text>
+            <Text style={styles.micIcon}>{isTranscribing ? '⏳' : '🎙️'}</Text>
           )}
         </TouchableOpacity>
 
-        <Text style={styles.statusText}>
-          {isRecording
-            ? 'Listening... Tap to finalize voice prompt'
-            : isProcessing
-            ? 'Pipeline executing...'
-            : 'Tap mic or type above to order via Swiggy'}
+        <Text
+          style={[
+            styles.statusText,
+            isRecording && styles.statusTextActive,
+            isTranscribing && styles.statusTextTranscribing,
+          ]}
+        >
+          {statusMessage}
         </Text>
       </View>
     </View>
@@ -238,5 +470,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 8,
     fontWeight: '500',
+    textAlign: 'center',
+  },
+  statusTextActive: {
+    color: '#f87171',
+    fontWeight: '700',
+  },
+  statusTextTranscribing: {
+    color: '#60a5fa',
+    fontWeight: '700',
   },
 });

@@ -14,7 +14,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.quasis.foodordering"
+      "bundleIdentifier": "com.quasis.foodordering",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Quasis needs microphone access to transcribe your food orders using Groq Whisper AI."
+      }
     },
     "android": {
       "package": "com.quasis.foodordering",
@@ -25,9 +28,14 @@
       },
       "permissions": [
         "INTERNET",
-        "ACCESS_NETWORK_STATE"
+        "ACCESS_NETWORK_STATE",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS"
       ]
     },
+    "plugins": [
+      "expo-audio"
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     }

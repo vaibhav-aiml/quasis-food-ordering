@@ -144,6 +144,40 @@ export const approveOrder = async (
   return res.json();
 };
 
+export interface TranscribeResponse {
+  success: boolean;
+  text: string;
+  model: string;
+  durationMs: number;
+  error?: string;
+}
+
+/**
+ * Sends base64-encoded audio to backend Groq Whisper (whisper-large-v3) endpoint
+ */
+export const transcribeAudio = async (
+  audioBase64: string,
+  mimeType: string = 'audio/m4a',
+  prompt?: string
+): Promise<TranscribeResponse> => {
+  const res = await fetch(`${currentApiBaseUrl}/api/voice/transcribe`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ audioBase64, mimeType, prompt }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(
+      errorData.error || `Voice transcription failed with HTTP ${res.status}`
+    );
+  }
+
+  return res.json();
+};
+
 /**
  * Connects to live pipeline trace stream via WebSocket or polling fallback
  */

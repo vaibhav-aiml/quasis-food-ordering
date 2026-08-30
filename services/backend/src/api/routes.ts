@@ -1,7 +1,28 @@
 import { Request, Response, Router } from 'express';
 import { PipelineOrchestrator } from '../agent/pipelineOrchestrator.js';
+import { WhisperTranscriber } from '../agent/whisperTranscriber.js';
 import { SwiggySearchService } from '../tools/swiggy/searchService.js';
 import { PipelineEvent } from '../tools/swiggy/types.js';
+
+// In-memory sliding window rate limiter for audio transcription (per IP)
+const transcriptionRateLimitMap = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const MAX_TRANSCRIPTION_REQUESTS_PER_MIN = 20; // Max 20 requests per minute per IP
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const timestamps = transcriptionRateLimitMap.get(ip) || [];
+  const validTimestamps = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+
+  if (validTimestamps.length >= MAX_TRANSCRIPTION_REQUESTS_PER_MIN) {
+    transcriptionRateLimitMap.set(ip, validTimestamps);
+    return true;
+  }
+
+  validTimestamps.push(now);
+  transcriptionRateLimitMap.set(ip, validTimestamps);
+  return false;
+}
 
 export function createRouter(
   orchestrator: PipelineOrchestrator,
@@ -16,6 +37,50 @@ export function createRouter(
       service: 'quasis-swiggy-pipeline-backend',
       timestamp: Date.now(),
     });
+  });
+
+  // Voice transcription endpoint using Groq Whisper Large v3
+  router.post('/api/voice/transcribe', async (req: Request, res: Response) => {
+    try {
+      const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+      if (isRateLimited(clientIp)) {
+        res.status(429).json({
+          success: false,
+          error: 'Too many transcription requests. Rate limit is 20 requests per minute.',
+        });
+        return;
+      }
+
+      const { audioBase64, mimeType, filename, prompt, language } = req.body;
+
+      if (!audioBase64 || typeof audioBase64 !== 'string') {
+        res.status(400).json({
+          success: false,
+          error: 'Field "audioBase64" is required and must be a base64 encoded audio string.',
+        });
+        return;
+      }
+
+      const result = await WhisperTranscriber.transcribe({
+        audioBase64,
+        mimeType,
+        filename,
+        prompt,
+        language,
+      });
+
+      if (!result.success) {
+        res.status(500).json(result);
+        return;
+      }
+
+      res.status(200).json(result);
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.message || 'Internal error during audio transcription',
+      });
+    }
   });
 
   // Fetch catalog restaurants
