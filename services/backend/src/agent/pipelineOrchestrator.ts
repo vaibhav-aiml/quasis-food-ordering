@@ -22,7 +22,7 @@ export class PipelineOrchestrator {
     this.searchService = searchService || new SwiggySearchService();
   }
 
-  public createSession(prompt: string, customSessionId?: string): string {
+  public createSession(prompt: string, city: string = 'Bengaluru', customSessionId?: string): string {
     const sessionId = customSessionId || `session_${nanoid(10)}`;
     const now = Date.now();
 
@@ -30,9 +30,10 @@ export class PipelineOrchestrator {
       sessionId,
       stage: 'PARSING_INTENT',
       prompt,
+      city,
       createdAt: now,
       updatedAt: now,
-      logs: [`Pipeline initialized for prompt: "${prompt}"`],
+      logs: [`Pipeline initialized for prompt: "${prompt}" in ${city}`],
     };
 
     this.sessions.set(sessionId, initialState);
@@ -40,7 +41,7 @@ export class PipelineOrchestrator {
     this.eventHistory.set(sessionId, []);
 
     // Start asynchronous pipeline execution
-    this.executePipeline(sessionId, prompt).catch((err) => {
+    this.executePipeline(sessionId, prompt, city).catch((err) => {
       this.emitEvent(sessionId, 'FAILED', 'failed', `Pipeline execution error: ${err.message}`, {
         error: err.message,
       });
@@ -112,7 +113,7 @@ export class PipelineOrchestrator {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  private async executePipeline(sessionId: string, prompt: string): Promise<void> {
+  private async executePipeline(sessionId: string, prompt: string, city: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
@@ -121,20 +122,22 @@ export class PipelineOrchestrator {
       sessionId,
       'PARSING_INTENT',
       'in_progress',
-      'Parsing natural language intent and budget constraints...',
+      `Parsing natural language intent and budget constraints for ${city}...`,
       {}
     );
 
     await this.sleep(1200);
 
-    const intent: FoodIntent = await IntentExtractor.extract(prompt);
+    const intent: FoodIntent = await IntentExtractor.extract(prompt, city);
+    // Overwrite intent.city with client-supplied city (source of truth)
+    intent.city = city;
     session.intent = intent;
 
     this.emitEvent(
       sessionId,
       'PARSING_INTENT',
       'completed',
-      `Extracted: "${intent.queryItem}"${
+      `Extracted: "${intent.queryItem}" in ${intent.city}${
         intent.maxBudget ? ` | Budget: ≤ ₹${intent.maxBudget}` : ''
       }${intent.restaurantName ? ` | Restaurant: ${intent.restaurantName}` : ''}${
         intent.dietaryPreference !== 'any' ? ` | Pref: ${intent.dietaryPreference}` : ''
@@ -148,8 +151,8 @@ export class PipelineOrchestrator {
       'SEARCHING_RESTAURANTS',
       'in_progress',
       intent.restaurantName
-        ? `Locating restaurant: ${intent.restaurantName}...`
-        : 'Searching top-rated restaurants on Swiggy...',
+        ? `Locating restaurant: ${intent.restaurantName} in ${intent.city}...`
+        : `Searching top-rated restaurants in ${intent.city} on Swiggy...`,
       { intent }
     );
 
@@ -157,7 +160,8 @@ export class PipelineOrchestrator {
 
     const matchedRestaurants = this.searchService.searchRestaurants(
       intent.restaurantName,
-      intent.cuisine
+      intent.cuisine,
+      intent.city
     );
     session.restaurantsFound = matchedRestaurants.length;
 

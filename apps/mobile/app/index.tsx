@@ -11,9 +11,11 @@ import {
   View,
 } from 'react-native';
 import { ApprovalCard } from '../components/ApprovalCard';
+import { CityPickerModal } from '../components/CityPickerModal';
 import { OrderHistoryModal } from '../components/OrderHistoryModal';
 import { PipelineTrace } from '../components/PipelineTrace';
 import { VoiceRecorder } from '../components/VoiceRecorder';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   approveOrder,
   getApiBaseUrl,
@@ -48,6 +50,10 @@ export default function MainScreen() {
   const [apiHost, setApiHost] = useState(getApiBaseUrl());
   const [showSettings, setShowSettings] = useState(false);
 
+  // City Selection State
+  const [selectedCity, setSelectedCity] = useState<string | null>(null);
+  const [showCityPicker, setShowCityPicker] = useState(false);
+
   // Order History & Favorites Modal State
   const [showHistory, setShowHistory] = useState(false);
   const [orderCount, setOrderCount] = useState(0);
@@ -62,6 +68,19 @@ export default function MainScreen() {
 
   useEffect(() => {
     refreshOrderCount();
+    (async () => {
+      try {
+        const savedCity = await AsyncStorage.getItem('quasis_selected_city');
+        if (savedCity) {
+          setSelectedCity(savedCity);
+        } else {
+          setShowCityPicker(true);
+        }
+      } catch (err) {
+        console.warn('Failed to load selected city:', err);
+        setShowCityPicker(true);
+      }
+    })();
     return () => {
       if (unsubscribeRef.current) {
         unsubscribeRef.current();
@@ -69,10 +88,26 @@ export default function MainScreen() {
     };
   }, []);
 
+  const handleSelectCity = async (city: string) => {
+    setSelectedCity(city);
+    try {
+      await AsyncStorage.setItem('quasis_selected_city', city);
+    } catch (err) {
+      console.warn('Failed to persist city:', err);
+    }
+    setShowCityPicker(false);
+  };
+
   const handleStartPipeline = async (customPrompt?: string) => {
     const textToRun = customPrompt || prompt;
     if (!textToRun.trim()) {
       Alert.alert('Empty Request', 'Please type or speak your food order intent.');
+      return;
+    }
+
+    if (!selectedCity) {
+      setShowCityPicker(true);
+      Alert.alert('Select City', 'Please select your city before submitting an order.');
       return;
     }
 
@@ -88,7 +123,7 @@ export default function MainScreen() {
     setCurrentStage('PARSING_INTENT');
 
     try {
-      const response = await submitFoodIntent(textToRun);
+      const response = await submitFoodIntent(textToRun, selectedCity);
       setSessionId(response.sessionId);
 
       // Subscribe to real-time execution trace
@@ -263,6 +298,17 @@ export default function MainScreen() {
           </View>
 
           <View style={styles.headerButtons}>
+            {/* City Selector Pill */}
+            <TouchableOpacity
+              style={styles.cityPill}
+              onPress={() => setShowCityPicker(true)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.cityPillPin}>📍</Text>
+              <Text style={styles.cityPillText}>{selectedCity || 'Select City'}</Text>
+              <Text style={styles.cityPillChevron}>▾</Text>
+            </TouchableOpacity>
+
             {/* History & Favorites Button with Badge */}
             <TouchableOpacity
               style={styles.historyButton}
@@ -375,6 +421,15 @@ export default function MainScreen() {
         )}
       </ScrollView>
 
+      {/* City Picker Modal */}
+      <CityPickerModal
+        visible={showCityPicker}
+        selectedCity={selectedCity}
+        onSelectCity={handleSelectCity}
+        onClose={() => setShowCityPicker(false)}
+        canClose={!!selectedCity}
+      />
+
       {/* Order History & Favorites Modal */}
       <OrderHistoryModal
         visible={showHistory}
@@ -438,6 +493,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  cityPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161922',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#262c3d',
+    gap: 4,
+  },
+  cityPillPin: {
+    fontSize: 12,
+  },
+  cityPillText: {
+    color: '#f8fafc',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  cityPillChevron: {
+    color: '#94a3b8',
+    fontSize: 12,
+    marginLeft: 2,
   },
   historyButton: {
     width: 38,

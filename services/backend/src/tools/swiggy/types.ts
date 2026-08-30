@@ -5,6 +5,7 @@ export type DietaryPreference = z.infer<typeof DietaryPreferenceEnum>;
 
 export const FoodIntentSchema = z.object({
   queryItem: z.string().describe('Target food item or beverage, e.g. "cold coffee", "burger", "biryani"'),
+  city: z.string().describe('The city the user is ordering in, e.g. Jaipur, Bengaluru — always supplied by the client, never guessed.'),
   maxBudget: z.number().optional().describe('Maximum budget in INR, e.g. 200'),
   restaurantName: z.string().nullable().optional().describe('Specific restaurant name if mentioned, or null'),
   dietaryPreference: DietaryPreferenceEnum.optional().default('any').describe('Dietary filter preference'),
@@ -37,6 +38,7 @@ export interface Restaurant {
   address: string;
   cuisines: string[];
   coverImage: string;
+  city?: string;
   menu: MenuItem[];
 }
 
@@ -75,6 +77,7 @@ export interface PipelineState {
   sessionId: string;
   stage: PipelineStage;
   prompt: string;
+  city?: string;
   createdAt: number;
   updatedAt: number;
   intent?: FoodIntent;

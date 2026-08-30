@@ -106,14 +106,19 @@ export function createRouter(
   // Stage 1: Post intent / prompt to start pipeline
   router.post('/api/order/intent', (req: Request, res: Response) => {
     try {
-      const { prompt, sessionId } = req.body;
+      const { prompt, city, sessionId } = req.body;
 
       if (!prompt || typeof prompt !== 'string') {
         res.status(400).json({ error: 'Field "prompt" is required and must be a string' });
         return;
       }
 
-      const activeSessionId = orchestrator.createSession(prompt, sessionId);
+      if (!city || typeof city !== 'string' || !city.trim()) {
+        res.status(400).json({ error: 'Field "city" is required and must be a non-empty string' });
+        return;
+      }
+
+      const activeSessionId = orchestrator.createSession(prompt, city.trim(), sessionId);
       const state = orchestrator.getSessionState(activeSessionId);
 
       res.status(200).json({

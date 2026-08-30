@@ -5,11 +5,12 @@ export class IntentExtractor {
    * Extracts structured FoodIntent from natural language prompt or voice transcript.
    * Prioritizes Groq API (GROQ_API_KEY) if available, or falls back to robust local rules.
    */
-  public static async extract(inputPrompt: string): Promise<FoodIntent> {
+  public static async extract(inputPrompt: string, defaultCity: string = 'Bengaluru'): Promise<FoodIntent> {
     const prompt = inputPrompt.trim();
     if (!prompt) {
       return FoodIntentSchema.parse({
         queryItem: 'cold coffee',
+        city: defaultCity,
         maxBudget: 200,
         restaurantName: null,
         dietaryPreference: 'any',
@@ -21,7 +22,10 @@ export class IntentExtractor {
       try {
         const groqIntent = await this.extractWithGroq(prompt, process.env.GROQ_API_KEY);
         if (groqIntent) {
-          return FoodIntentSchema.parse(groqIntent);
+          return FoodIntentSchema.parse({
+            ...groqIntent,
+            city: defaultCity,
+          });
         }
       } catch (err) {
         console.warn('Groq extraction fallback to rules:', err);
@@ -30,7 +34,10 @@ export class IntentExtractor {
 
     // 2. Fallback to deterministic NLP / Regex extraction
     const extracted = this.extractWithRules(prompt);
-    return FoodIntentSchema.parse(extracted);
+    return FoodIntentSchema.parse({
+      ...extracted,
+      city: defaultCity,
+    });
   }
 
   /**
@@ -86,6 +93,7 @@ Respond strictly in valid JSON matching this schema:
 
       return {
         queryItem,
+        city: 'Bengaluru',
         maxBudget: typeof parsed.maxBudget === 'number' ? parsed.maxBudget : undefined,
         restaurantName: parsed.restaurantName || null,
         dietaryPreference: ['veg', 'non-veg', 'any'].includes(parsed.dietaryPreference)
@@ -226,6 +234,7 @@ Respond strictly in valid JSON matching this schema:
 
     return {
       queryItem,
+      city: 'Bengaluru',
       maxBudget,
       restaurantName,
       dietaryPreference,

@@ -50,6 +50,7 @@ export interface Restaurant {
   address: string;
   cuisines: string[];
   coverImage: string;
+  city?: string;
 }
 
 export type PipelineStage =
@@ -70,6 +71,7 @@ export interface PipelineEvent {
   data?: {
     intent?: {
       queryItem: string;
+      city?: string;
       maxBudget?: number;
       restaurantName?: string | null;
       dietaryPreference?: 'veg' | 'non-veg' | 'any';
@@ -106,13 +108,17 @@ export interface ApprovalResponse {
   message: string;
 }
 
-export const submitFoodIntent = async (prompt: string, sessionId?: string): Promise<StartPipelineResponse> => {
+export const submitFoodIntent = async (
+  prompt: string,
+  city: string,
+  sessionId?: string
+): Promise<StartPipelineResponse> => {
   const res = await fetch(`${currentApiBaseUrl}/api/order/intent`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ prompt, sessionId }),
+    body: JSON.stringify({ prompt, city, sessionId }),
   });
 
   if (!res.ok) {

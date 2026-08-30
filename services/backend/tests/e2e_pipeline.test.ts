@@ -7,6 +7,34 @@ import { createRouter } from '../src/api/routes.js';
 import { SwiggySearchService } from '../src/tools/swiggy/searchService.js';
 
 describe('End-to-End Live Food Ordering Pipeline API Test', () => {
+  it('rejects intent submission with 400 if city is missing from request body', async () => {
+    const searchService = new SwiggySearchService();
+    const orchestrator = new PipelineOrchestrator(searchService);
+
+    const app = express();
+    app.use(cors());
+    app.use(express.json());
+    app.use(createRouter(orchestrator, searchService));
+
+    const server = http.createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as any).port;
+
+    try {
+      const intentRes = await fetch(`http://localhost:${port}/api/order/intent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'Find the best-rated iced latte under 200' }),
+      });
+
+      expect(intentRes.status).toBe(400);
+      const intentData = (await intentRes.json()) as any;
+      expect(intentData.error).toContain('city');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it('handles intent submission, state polling, and final order approval', async () => {
     const searchService = new SwiggySearchService();
     const orchestrator = new PipelineOrchestrator(searchService);
@@ -21,11 +49,14 @@ describe('End-to-End Live Food Ordering Pipeline API Test', () => {
     const port = (server.address() as any).port;
 
     try {
-      // 1. Submit Intent
+      // 1. Submit Intent with city
       const intentRes = await fetch(`http://localhost:${port}/api/order/intent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: 'Find the best-rated iced latte under 200' }),
+        body: JSON.stringify({
+          prompt: 'Find the best-rated iced latte under 200',
+          city: 'Bengaluru',
+        }),
       });
 
       expect(intentRes.status).toBe(200);

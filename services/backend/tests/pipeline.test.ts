@@ -44,6 +44,7 @@ describe('2. SwiggySearchService', () => {
   it('filters items strictly within the budget limit', async () => {
     const intent: FoodIntent = {
       queryItem: 'cold coffee',
+      city: 'Bengaluru',
       maxBudget: 190,
       restaurantName: null,
       dietaryPreference: 'any',
@@ -52,6 +53,45 @@ describe('2. SwiggySearchService', () => {
     const recommendation = await searchService.findBestRecommendation(intent);
     expect(recommendation).toBeDefined();
     expect(recommendation!.item.price).toBeLessThanOrEqual(190);
+  });
+
+  it('ensures recommendation result has address and city matching intent.city', async () => {
+    const intent: FoodIntent = {
+      queryItem: 'sweet corn pizza',
+      city: 'Jaipur',
+      restaurantName: 'La Pinoz',
+      dietaryPreference: 'any',
+    };
+
+    const recommendation = await searchService.findBestRecommendation(intent);
+    expect(recommendation).toBeDefined();
+    expect(recommendation!.restaurant.city).toBe('Jaipur');
+    expect(recommendation!.restaurant.address.toLowerCase()).toContain('jaipur');
+  });
+
+  it('proves different cities produce distinct restaurant id and address for the same restaurantName and dish', async () => {
+    const jaipurIntent: FoodIntent = {
+      queryItem: 'sweet corn pizza',
+      city: 'Jaipur',
+      restaurantName: 'La Pinoz',
+      dietaryPreference: 'any',
+    };
+    const mumbaiIntent: FoodIntent = {
+      queryItem: 'sweet corn pizza',
+      city: 'Mumbai',
+      restaurantName: 'La Pinoz',
+      dietaryPreference: 'any',
+    };
+
+    const jaipurResult = await searchService.findBestRecommendation(jaipurIntent);
+    const mumbaiResult = await searchService.findBestRecommendation(mumbaiIntent);
+
+    expect(jaipurResult).toBeDefined();
+    expect(mumbaiResult).toBeDefined();
+    expect(jaipurResult!.restaurant.id).not.toBe(mumbaiResult!.restaurant.id);
+    expect(jaipurResult!.restaurant.address).not.toBe(mumbaiResult!.restaurant.address);
+    expect(jaipurResult!.restaurant.address).toContain('Jaipur');
+    expect(mumbaiResult!.restaurant.address).toContain('Mumbai');
   });
 
   it('generates valid Swiggy native deep links and web fallback URLs', () => {
@@ -67,7 +107,7 @@ describe('2. SwiggySearchService', () => {
 describe('3. PipelineOrchestrator', () => {
   it('executes full pipeline and emits sequential stages', async () => {
     const orchestrator = new PipelineOrchestrator();
-    const sessionId = orchestrator.createSession('Get me cold coffee under 200');
+    const sessionId = orchestrator.createSession('Get me cold coffee under 200', 'Bengaluru');
 
     // Wait for pipeline stages to progress
     await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -75,6 +115,7 @@ describe('3. PipelineOrchestrator', () => {
     const state = orchestrator.getSessionState(sessionId);
     expect(state).toBeDefined();
     expect(state?.stage).toBe('AWAITING_APPROVAL');
+    expect(state?.city).toBe('Bengaluru');
     expect(state?.recommendedItem).toBeDefined();
     expect(state?.recommendedItem?.price).toBeLessThanOrEqual(200);
 

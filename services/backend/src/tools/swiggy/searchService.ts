@@ -10,6 +10,7 @@ export const SWIGGY_CATALOG: Restaurant[] = [
     ratingCount: 14800,
     deliveryTimeMinutes: 20,
     address: '100ft Road, Indiranagar, Bengaluru',
+    city: 'Bengaluru',
     cuisines: ['Specialty Coffee', 'Cafe', 'Sandwiches', 'Bakery', 'Desserts'],
     coverImage: 'https://images.unsplash.com/photo-1442512595331-e89e73853f31?auto=format&fit=crop&w=600&q=80',
     menu: [
@@ -95,6 +96,7 @@ export const SWIGGY_CATALOG: Restaurant[] = [
     ratingCount: 18200,
     deliveryTimeMinutes: 25,
     address: '80ft Road, 4th Block, Koramangala, Bengaluru',
+    city: 'Bengaluru',
     cuisines: ['Beverages', 'Coffee', 'Desserts', 'Cafe', 'Bakery'],
     coverImage: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80',
     menu: [
@@ -156,6 +158,7 @@ export const SWIGGY_CATALOG: Restaurant[] = [
     ratingCount: 22000,
     deliveryTimeMinutes: 25,
     address: '100ft Road, Indiranagar, Bengaluru',
+    city: 'Bengaluru',
     cuisines: ['Beverages', 'Coffee', 'Desserts', 'Cafe', 'Fast Food'],
     coverImage: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80',
     menu: [
@@ -205,6 +208,7 @@ export const SWIGGY_CATALOG: Restaurant[] = [
     ratingCount: 89000,
     deliveryTimeMinutes: 20,
     address: '100ft Road, HAL 2nd Stage, Indiranagar, Bengaluru',
+    city: 'Bengaluru',
     cuisines: ['Pizzas', 'Italian', 'Pastas', 'Desserts', 'Fast Food'],
     coverImage: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=600&q=80',
     menu: [
@@ -278,6 +282,7 @@ export const SWIGGY_CATALOG: Restaurant[] = [
     ratingCount: 52000,
     deliveryTimeMinutes: 30,
     address: 'St. Marks Road, Ashok Nagar, Bengaluru',
+    city: 'Bengaluru',
     cuisines: ['American', 'Burgers', 'Fast Food', 'Beverages', 'Desserts'],
     coverImage: 'https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=600&q=80',
     menu: [
@@ -327,6 +332,7 @@ export const SWIGGY_CATALOG: Restaurant[] = [
     ratingCount: 78000,
     deliveryTimeMinutes: 30,
     address: 'Residency Road, Bengaluru',
+    city: 'Bengaluru',
     cuisines: ['Biryani', 'Andhra', 'South Indian', 'North Indian'],
     coverImage: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&w=600&q=80',
     menu: [
@@ -376,6 +382,7 @@ export const SWIGGY_CATALOG: Restaurant[] = [
     ratingCount: 65000,
     deliveryTimeMinutes: 25,
     address: 'Commercial Street, Bengaluru',
+    city: 'Bengaluru',
     cuisines: ['North Indian', 'Street Food', 'Sweets', 'Chaat', 'Thali'],
     coverImage: 'https://images.unsplash.com/photo-1626132647523-66f5bf380027?auto=format&fit=crop&w=600&q=80',
     menu: [
@@ -425,6 +432,7 @@ export const SWIGGY_CATALOG: Restaurant[] = [
     ratingCount: 34000,
     deliveryTimeMinutes: 20,
     address: 'Koramangala 5th Block, Bengaluru',
+    city: 'Bengaluru',
     cuisines: ['Tea', 'Beverages', 'Fast Food', 'Snacks'],
     coverImage: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&w=600&q=80',
     menu: [
@@ -471,8 +479,17 @@ export class SwiggySearchService {
     return this.catalog.find((r) => r.id === id || r.slug.includes(id));
   }
 
-  public searchRestaurants(restaurantName?: string | null, cuisine?: string): Restaurant[] {
+  public searchRestaurants(
+    restaurantName?: string | null,
+    cuisine?: string,
+    city?: string
+  ): Restaurant[] {
     let results = [...this.catalog];
+
+    if (city && city.trim()) {
+      const c = city.toLowerCase().trim();
+      results = results.filter((r) => !r.city || r.city.toLowerCase() === c);
+    }
 
     if (restaurantName && restaurantName.trim()) {
       const query = restaurantName.toLowerCase().trim();
@@ -486,7 +503,7 @@ export class SwiggySearchService {
       if (directMatches.length > 0) {
         return directMatches;
       }
-      // If a specific restaurant was requested but not found in catalog, return empty so dynamic synthesis activates
+      // If a specific restaurant was requested but not found in catalog for this city, return empty so dynamic synthesis activates
       return [];
     }
 
@@ -497,6 +514,8 @@ export class SwiggySearchService {
       );
       if (cuisineMatches.length > 0) {
         results = cuisineMatches;
+      } else {
+        return [];
       }
     }
 
@@ -528,9 +547,11 @@ export class SwiggySearchService {
    */
   private async findWithGroqAI(intent: FoodIntent, apiKey: string): Promise<RecommendationResult | null> {
     const systemPrompt = `You are Swiggy India's AI Restaurant & Menu Search Engine.
-Given a user's food ordering query, find the exact matching restaurant and specific menu item on Swiggy.
-If a restaurant is requested (e.g. Blue Tokai, Third Wave Coffee, Starbucks, RJ 14, Domino's, Haldiram's, Truffles, Punjab Grill, etc.), search exclusively for that restaurant and the exact requested item.
-If no restaurant is specified, select the highest-rated top authentic restaurant for that dish in India.
+The user is ordering in **${intent.city}**, India. You MUST return a restaurant outlet that genuinely operates in ${intent.city}. Do NOT return a branch from a different city, even if it is the chain's most famous or highest-rated location elsewhere in India. If you cannot confidently identify a real outlet of the requested restaurant operating in ${intent.city}, respond with exactly {"restaurant": null} instead of guessing a branch from another city.
+
+Given a user's food ordering query, find the exact matching restaurant and specific menu item on Swiggy in ${intent.city}.
+If a restaurant is requested (e.g. Blue Tokai, Third Wave Coffee, Starbucks, RJ 14, Domino's, Haldiram's, Truffles, Punjab Grill, etc.), search exclusively for that restaurant in ${intent.city} and the exact requested item.
+If no restaurant is specified, select the highest-rated top authentic restaurant for that dish in ${intent.city}, India.
 
 PRICING INTELLIGENCE RULES (Indian Rupees - INR):
 - Standard Specialty Cafe (Blue Tokai, Third Wave Coffee, Costa Coffee):
@@ -549,7 +570,7 @@ PRICING INTELLIGENCE RULES (Indian Rupees - INR):
   * Chicken Biryani: ₹290 - ₹360
   * Mutton Biryani: ₹380 - ₹480
   * Paneer / Veg Biryani: ₹240 - ₹300
-- Pizza Outlets (Domino's, Pizza Hut):
+- Pizza Outlets (Domino's, Pizza Hut, La Pino'z):
   * Medium Pizza: ₹260 - ₹420
   * Garlic Bread: ₹130 - ₹180
 - South Indian (Sagar Ratna, Rameshwaram Cafe, Saravana Bhavan):
@@ -560,16 +581,17 @@ PRICING INTELLIGENCE RULES (Indian Rupees - INR):
   * Chai: ₹50 - ₹90
 
 Respect maxBudget if provided (item price MUST be <= maxBudget).
-Respond strictly in valid JSON matching this schema:
+Respond strictly in valid JSON matching this schema (or {"restaurant": null} if no operating outlet in ${intent.city}):
 {
   "restaurant": {
     "id": "string",
     "name": "string (e.g. Blue Tokai Coffee Roasters)",
-    "slug": "string (e.g. blue-tokai-coffee-roasters-indiranagar)",
+    "slug": "string (e.g. blue-tokai-coffee-roasters-c-scheme-jaipur)",
     "rating": number (4.0 to 4.9),
     "ratingCount": number,
     "deliveryTimeMinutes": number (15 to 40),
-    "address": "string (city and area in India)",
+    "address": "string (mention area and ${intent.city}, India)",
+    "city": "${intent.city}",
     "cuisines": ["string"]
   },
   "item": {
@@ -583,7 +605,7 @@ Respond strictly in valid JSON matching this schema:
     "category": "string (e.g. Hot Coffee, Iced Coffee, Pizzas, Biryani, Burgers, Desserts)",
     "popular": boolean
   },
-  "reason": "string (why this dish from this restaurant is the best match)"
+  "reason": "string (why this dish from this restaurant in ${intent.city} is the best match)"
 }`;
 
     const controller = new AbortController();
@@ -602,11 +624,11 @@ Respond strictly in valid JSON matching this schema:
             { role: 'system', content: systemPrompt },
             {
               role: 'user',
-              content: `User wants to order: ${intent.queryItem}${
+              content: `User is in ${intent.city}. Wants to order: ${intent.queryItem}${
                 intent.restaurantName ? ` from ${intent.restaurantName}` : ''
               }${intent.maxBudget ? ` within budget of ₹${intent.maxBudget}` : ''}${
                 intent.dietaryPreference !== 'any' ? ` (${intent.dietaryPreference})` : ''
-              }. Provide exact Indian Swiggy menu item name, realistic price, and details in JSON format.`,
+              }. Provide exact Indian Swiggy menu item name, realistic price, and details in ${intent.city} in JSON format.`,
             },
           ],
           temperature: 0.1,
@@ -632,18 +654,24 @@ Respond strictly in valid JSON matching this schema:
 
       const parsed = JSON.parse(cleanJson);
 
+      // If Groq explicitly indicates no operating outlet in this city
+      if (parsed.restaurant === null || (parsed.restaurant && parsed.restaurant.name === null)) {
+        return null;
+      }
+
       // Flexible mapping for robust schema normalization
       const restData = parsed.restaurant || {
         id: `rest_${Date.now()}`,
-        name: parsed.brand || parsed.restaurant_name || intent.restaurantName || 'Top-Rated Swiggy Outlet',
-        slug: (parsed.brand || parsed.restaurant_name || intent.restaurantName || 'swiggy-outlet')
+        name: parsed.brand || parsed.restaurant_name || intent.restaurantName || `Top-Rated Outlet in ${intent.city}`,
+        slug: (parsed.brand || parsed.restaurant_name || intent.restaurantName || `swiggy-${intent.city}`)
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/(^-|-$)/g, ''),
         rating: 4.7,
         ratingCount: 12000,
         deliveryTimeMinutes: 25,
-        address: 'Bengaluru, India',
+        address: `${intent.city}, India`,
+        city: intent.city,
         cuisines: ['Cafe', 'Specialties'],
       };
 
@@ -670,15 +698,21 @@ Respond strictly in valid JSON matching this schema:
         finalPrice = intent.maxBudget;
       }
 
+      let address = restData.address || `${intent.city}, India`;
+      if (!address.toLowerCase().includes(intent.city.toLowerCase())) {
+        address = `${address}, ${intent.city}`;
+      }
+
       const restaurant: Restaurant = {
         id: restData.id || `rest_${Date.now()}`,
-        name: restData.name || intent.restaurantName || 'Top-Rated Swiggy Outlet',
+        name: restData.name || intent.restaurantName || `Top-Rated Outlet in ${intent.city}`,
         slug: restData.slug || 'swiggy-outlet',
         rating: typeof restData.rating === 'number' ? restData.rating : 4.6,
         ratingCount: typeof restData.ratingCount === 'number' ? restData.ratingCount : 12000,
         deliveryTimeMinutes:
           typeof restData.deliveryTimeMinutes === 'number' ? restData.deliveryTimeMinutes : 25,
-        address: restData.address || 'Bengaluru, India',
+        address,
+        city: intent.city,
         cuisines: Array.isArray(restData.cuisines) ? restData.cuisines : ['Specialties'],
         coverImage: image,
         menu: [],
@@ -707,7 +741,7 @@ Respond strictly in valid JSON matching this schema:
         matchScore: 98,
         reason:
           parsed.reason ||
-          `Found authentic ${item.name} (₹${item.price}) at ${restaurant.name} with ⭐${item.rating} rating.`,
+          `Found authentic ${item.name} (₹${item.price}) at ${restaurant.name} with ⭐${item.rating} rating in ${intent.city}.`,
       };
     } catch {
       clearTimeout(timeout);
@@ -716,10 +750,10 @@ Respond strictly in valid JSON matching this schema:
   }
 
   private findLocally(intent: FoodIntent): RecommendationResult | null {
-    let targetRestaurants = this.searchRestaurants(intent.restaurantName, intent.cuisine);
+    let targetRestaurants = this.searchRestaurants(intent.restaurantName, intent.cuisine, intent.city);
 
     if (intent.restaurantName && targetRestaurants.length === 0) {
-      targetRestaurants = [this.createDynamicRestaurant(intent.restaurantName, intent.queryItem)];
+      targetRestaurants = [this.createDynamicRestaurant(intent.restaurantName, intent.queryItem, intent.city)];
     }
 
     const queryTokens = intent.queryItem
@@ -772,7 +806,8 @@ Respond strictly in valid JSON matching this schema:
     }
 
     const fallbackRestaurant =
-      targetRestaurants[0] || this.createDynamicRestaurant(intent.restaurantName || 'Popular Kitchen', intent.queryItem);
+      targetRestaurants[0] ||
+      this.createDynamicRestaurant(intent.restaurantName || 'Popular Kitchen', intent.queryItem, intent.city);
 
     const price = this.estimatePriceForQuery(intent.queryItem, fallbackRestaurant.name, intent.maxBudget);
     const image = getFoodImage(intent.queryItem);
@@ -783,7 +818,7 @@ Respond strictly in valid JSON matching this schema:
       price,
       rating: 4.7,
       ratingCount: 15400,
-      description: `Freshly prepared delicious ${intent.queryItem} with authentic ingredients.`,
+      description: `Freshly prepared delicious ${intent.queryItem} with authentic ingredients in ${intent.city}.`,
       isVeg: intent.dietaryPreference !== 'non-veg',
       popular: true,
       category: 'Specials',
@@ -849,19 +884,20 @@ Respond strictly in valid JSON matching this schema:
     return 210;
   }
 
-  private createDynamicRestaurant(name: string, queryItem: string): Restaurant {
+  private createDynamicRestaurant(name: string, queryItem: string, city: string = 'Bengaluru'): Restaurant {
     const slug = name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '');
     return {
-      id: `rest_${slug}`,
+      id: `rest_${slug}_${city.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
       name: this.capitalizeWords(name),
-      slug: `${slug}-outlet`,
+      slug: `${slug}-${city.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
       rating: 4.6,
       ratingCount: 28000,
       deliveryTimeMinutes: 25,
-      address: 'City Center Outlet, India',
+      address: `${this.capitalizeWords(name)} — City Center, ${city}`,
+      city,
       cuisines: ['Indian', 'Specialties'],
       coverImage: getFoodImage(queryItem),
       menu: [],

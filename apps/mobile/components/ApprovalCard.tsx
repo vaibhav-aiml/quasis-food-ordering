@@ -100,8 +100,8 @@ export const ApprovalCard: React.FC<ApprovalCardProps> = ({
           ) : null}
 
           <View style={styles.deliveryRow}>
-            <Text style={styles.deliveryText}>
-              ⏱️ ~{restaurant.deliveryTimeMinutes} mins delivery | 📍 {restaurant.address.split(',')[0]}
+            <Text style={styles.deliveryText} numberOfLines={1}>
+              ⏱️ ~{restaurant.deliveryTimeMinutes} mins delivery | 📍 {restaurant.address}
             </Text>
           </View>
         </View>
