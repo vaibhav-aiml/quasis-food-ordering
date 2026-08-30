@@ -27,8 +27,12 @@ import {
   subscribeToPipeline,
 } from '../services/api';
 import { OrderStorage, StorageAdapter, StoredOrder } from '../services/orderStorage';
+import { logBoot } from './_layout';
+
+logBoot('index:module evaluated');
 
 export default function MainScreen() {
+  logBoot('index:MainScreen render start');
   const [prompt, setPrompt] = useState('Find the best-rated iced latte under 200');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [currentStage, setCurrentStage] = useState<PipelineStage | null>(null);
@@ -47,6 +51,7 @@ export default function MainScreen() {
 
   // Server URL settings for physical Android devices over Wi-Fi
   const [apiHost, setApiHost] = useState(getApiBaseUrl());
+  logBoot('index:useState getApiBaseUrl done');
   const [showSettings, setShowSettings] = useState(false);
 
   // City Selection State
@@ -61,15 +66,20 @@ export default function MainScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
 
   const refreshOrderCount = async () => {
+    logBoot('index:refreshOrderCount calling');
     const list = await OrderStorage.getOrders();
     setOrderCount(list.length);
+    logBoot('index:refreshOrderCount done');
   };
 
   useEffect(() => {
+    logBoot('index:effect start');
     refreshOrderCount();
     (async () => {
       try {
+        logBoot('index:StorageAdapter.getItem calling');
         const savedCity = await StorageAdapter.getItem('quasis_selected_city');
+        logBoot('index:StorageAdapter.getItem done');
         if (savedCity) {
           setSelectedCity(savedCity);
         } else {
@@ -78,6 +88,7 @@ export default function MainScreen() {
       } catch (err) {
         setShowCityPicker(true);
       }
+      logBoot('index:effect end');
     })();
     return () => {
       if (unsubscribeRef.current) {

@@ -1,5 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { logBoot } from '../app/_layout';
+
+logBoot('orderStorage:module evaluated');
 
 export interface StoredOrder {
   id: string;
