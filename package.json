@@ -11,6 +11,10 @@
     "backend:build": "npm --prefix services/backend run build",
     "backend:test": "npm --prefix services/backend run test",
     "mobile:start": "npm --prefix apps/mobile start",
+    "mobile:clean": "npm --prefix apps/mobile run start -- --clear",
     "test": "npm --prefix services/backend run test"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.10"
   }
 }
