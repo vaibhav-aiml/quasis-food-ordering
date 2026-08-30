@@ -26,14 +26,17 @@ if (Platform.OS !== 'web') {
     // optional fallback
   }
 
-  try {
-    const ExpoAudio = require('expo-audio');
-    ExpoAudioModule = ExpoAudio;
-    AudioModule = ExpoAudio.AudioModule;
-    AudioRecorder = ExpoAudio.AudioRecorder || ExpoAudio.AudioModule?.AudioRecorder;
-    RecordingPresets = ExpoAudio.RecordingPresets;
-  } catch (e) {
-    // optional fallback
+  // Only attempt expo-audio if expo-av is not available
+  if (!ExpoAVAudio) {
+    try {
+      const ExpoAudio = require('expo-audio');
+      ExpoAudioModule = ExpoAudio;
+      AudioModule = ExpoAudio.AudioModule;
+      AudioRecorder = ExpoAudio.AudioRecorder || ExpoAudio.AudioModule?.AudioRecorder;
+      RecordingPresets = ExpoAudio.RecordingPresets;
+    } catch (e) {
+      // optional fallback
+    }
   }
 
   try {
