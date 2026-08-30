@@ -27,7 +27,7 @@ import {
   subscribeToPipeline,
 } from '../services/api';
 import { OrderStorage, StorageAdapter, StoredOrder } from '../services/orderStorage';
-import { logBoot } from './_layout';
+import { logBoot } from '../services/bootLogger';
 
 logBoot('index:module evaluated');
 

@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import { logBoot } from '../app/_layout';
+import { logBoot } from './bootLogger';
 
 logBoot('api:module evaluated');
 
