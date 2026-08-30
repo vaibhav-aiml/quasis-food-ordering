@@ -154,7 +154,7 @@ its neighbor, matching the dependency graph from Phase 0 §9.
 ## 8. Manual Testing & Verification
 
 ```bash
-cd shopping-agent/backend
+cd backend
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 

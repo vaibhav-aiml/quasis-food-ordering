@@ -152,7 +152,7 @@ and fixed it before it became a real bug, rather than after.
 ### Unit tests (no device/emulator needed)
 
 ```bash
-cd shopping-agent/backend
+cd backend
 source .venv/bin/activate
 pip install -r requirements-dev.txt   # picks up the corrected Appium-Python-Client + selenium pins
 

@@ -140,7 +140,7 @@ pointing at the Phase 7 mock if you need one of those right now.
 ### Unit tests (no device/emulator needed)
 
 ```bash
-cd shopping-agent/backend
+cd backend
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 

@@ -285,43 +285,52 @@ flowchart LR
 ## 8. Folder & Package Structure (Target — created incrementally from Phase 1 onward)
 
 ```
-shopping-agent/
+quasis-food-ordering/
 ├── backend/
 │   ├── app/
-│   │   ├── api/                    # FastAPI routers, versioned (v1/)
-│   │   │   └── v1/
 │   │   ├── core/                   # config, DI container, logging setup
-│   │   ├── domain/                 # Pydantic models / entities (framework-agnostic)
-│   │   │   ├── intent.py
-│   │   │   ├── product.py
-│   │   │   ├── constraints.py
-│   │   │   └── order.py
-│   │   ├── agents/                 # LLM-backed reasoning components
-│   │   │   ├── intent_agent.py
-│   │   │   ├── planning_agent.py
-│   │   │   └── recommendation_agent.py
-│   │   ├── graph/                  # LangGraph state, nodes, edges
-│   │   │   ├── state.py
-│   │   │   ├── nodes/
-│   │   │   └── workflow.py
-│   │   ├── adapters/                # Store adapters
-│   │   │   ├── base.py
-│   │   │   ├── zepto/
-│   │   │   ├── blinkit/
-│   │   │   └── instamart/
-│   │   ├── automation/               # Appium layer
-│   │   │   ├── driver_manager.py
-│   │   │   ├── waits.py
-│   │   │   └── gestures.py
-│   │   ├── processing/                # deterministic layers
-│   │   │   ├── verification.py
-│   │   │   ├── normalization.py
-│   │   │   └── ranking.py
-│   │   ├── services/                 # orchestration glue (tool orchestrator etc.)
+│   │   ├── automation/             # Swiggy on-device uiautomator2 automation
+│   │   ├── food_ordering/          # food ordering domain models
+│   │   ├── shared/                 # shared utilities
+│   │   ├── grocery/                # Quick-commerce grocery agent (Zepto/Blinkit/Instamart)
+│   │   │   ├── api/                # FastAPI routers, versioned (v1/)
+│   │   │   │   └── v1/
+│   │   │   ├── domain/             # Pydantic models / entities (framework-agnostic)
+│   │   │   │   ├── intent.py
+│   │   │   │   ├── product.py
+│   │   │   │   ├── constraints.py
+│   │   │   │   └── order.py
+│   │   │   ├── agents/             # LLM-backed reasoning components
+│   │   │   │   ├── intent_agent.py
+│   │   │   │   ├── planning_agent.py
+│   │   │   │   └── recommendation_agent.py
+│   │   │   ├── graph/              # LangGraph state, nodes, edges
+│   │   │   │   ├── state.py
+│   │   │   │   ├── nodes/
+│   │   │   │   └── workflow.py
+│   │   │   ├── adapters/           # Store adapters
+│   │   │   │   ├── base.py
+│   │   │   │   ├── zepto/
+│   │   │   │   ├── blinkit/
+│   │   │   │   └── instamart/
+│   │   │   ├── automation/         # Appium layer
+│   │   │   │   ├── driver_manager.py
+│   │   │   │   ├── waits.py
+│   │   │   │   └── gestures.py
+│   │   │   ├── processing/         # deterministic layers
+│   │   │   │   ├── verification.py
+│   │   │   │   ├── normalization.py
+│   │   │   │   └── ranking.py
+│   │   │   ├── services/           # orchestration glue (tool orchestrator etc.)
+│   │   │   └── prompts/            # prompt templates
 │   │   └── main.py
-│   └── tests/                        # mirrors app/ structure
-├── mobile/                           # Flutter app
-└── docs/                             # architecture docs (this file lives here)
+│   └── tests/                      # mirrors backend/app structure
+│       ├── automation/
+│       ├── core/
+│       └── grocery/                # mirrors app/grocery/ structure
+├── apps/mobile/                    # React Native / Expo mobile app
+├── services/backend/               # TypeScript Fastify/SSE food ordering backend
+└── docs/grocery/                   # grocery architecture docs (this file lives here)
 ```
 
 This is a **modular monolith**: one deployable backend process, but internally partitioned along the same seams a future microservice split would use (`agents/`, `adapters/`, `processing/` are each independently extractable — see §12).

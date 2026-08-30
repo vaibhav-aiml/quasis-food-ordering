@@ -218,7 +218,7 @@ logic in Phase 5.
 ## 7. Manual Testing & Verification
 
 ```bash
-cd shopping-agent/backend
+cd backend
 source .venv/bin/activate
 pip install -r requirements-dev.txt   # if not already done
 

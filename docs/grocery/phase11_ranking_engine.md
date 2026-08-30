@@ -113,7 +113,7 @@ trim+lowercase normalization across every store's results.
 ## 6. Manual Testing & Verification
 
 ```bash
-cd shopping-agent/backend
+cd backend
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 

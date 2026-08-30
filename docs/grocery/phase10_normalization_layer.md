@@ -133,7 +133,7 @@ reason, mirroring Phase 9's "never silently discard" precedent.
 ## 6. Manual Testing & Verification
 
 ```bash
-cd shopping-agent/backend
+cd backend
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 

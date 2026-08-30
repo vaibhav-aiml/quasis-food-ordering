@@ -90,7 +90,7 @@ trail of everything that didn't — never a silent drop), `missing_products`,
 ## 6. Manual Testing & Verification
 
 ```bash
-cd shopping-agent/backend
+cd backend
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 

@@ -182,7 +182,7 @@ changes no defaults.
 ## 7. Manual testing & verification
 
 ```bash
-cd shopping-agent/backend
+cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
 pytest tests/ -v

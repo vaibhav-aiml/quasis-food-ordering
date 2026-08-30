@@ -121,7 +121,7 @@ three branches, one per decision:
 ## 6. Manual Testing & Verification
 
 ```bash
-cd shopping-agent/backend
+cd backend
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 

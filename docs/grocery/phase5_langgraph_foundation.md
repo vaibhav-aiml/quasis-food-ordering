@@ -246,7 +246,7 @@ and pause/resume simply doesn't work.
 > the commands below for real before approving this phase.
 
 ```bash
-cd shopping-agent/backend
+cd backend
 source .venv/bin/activate
 pip install -r requirements-dev.txt   # if not already done
 

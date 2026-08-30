@@ -47,26 +47,33 @@ to redesign, only to instantiate.
 ## 4. Folder Structure (created this phase)
 
 ```
-shopping-agent/
+quasis-food-ordering/
 ├── backend/
 │   ├── app/
-│   │   ├── api/v1/          # FastAPI routers — empty until Phase 2
 │   │   ├── core/            # config, DI container, logging — empty until Phase 2
-│   │   ├── domain/          # Pydantic entities — empty until Phase 4/10
-│   │   ├── agents/          # LLM-backed reasoning — empty until Phase 3/4
-│   │   ├── graph/nodes/     # LangGraph state & nodes — empty until Phase 5
-│   │   ├── adapters/{zepto,blinkit,instamart}/  # empty until Phase 7
-│   │   ├── automation/      # Appium layer — empty until Phase 6
-│   │   ├── processing/      # verification/normalization/ranking — empty until Phase 9-11
-│   │   └── services/        # tool orchestrator — empty until Phase 5
-│   ├── tests/                # mirrors app/ 1:1, empty until first tests are written
+│   │   ├── automation/      # Swiggy uiautomator2 automation
+│   │   ├── food_ordering/   # food ordering domain models
+│   │   ├── shared/          # shared utilities
+│   │   └── grocery/         # Quick-commerce grocery agent
+│   │       ├── api/v1/          # FastAPI routers — empty until Phase 2
+│   │       ├── domain/          # Pydantic entities — empty until Phase 4/10
+│   │       ├── agents/          # LLM-backed reasoning — empty until Phase 3/4
+│   │       ├── graph/nodes/     # LangGraph state & nodes — empty until Phase 5
+│   │       ├── adapters/{zepto,blinkit,instamart}/  # empty until Phase 7
+│   │       ├── automation/      # Appium layer — empty until Phase 6
+│   │       ├── processing/      # verification/normalization/ranking — empty until Phase 9-11
+│   │       ├── services/        # tool orchestrator — empty until Phase 5
+│   │       └── prompts/         # LLM prompt templates
+│   ├── tests/               # mirrors backend/app structure
+│   │   ├── automation/
+│   │   ├── core/
+│   │   └── grocery/         # mirrors app/grocery/ 1:1
 │   ├── requirements.txt
 │   ├── requirements-dev.txt
 │   └── .env.example
-├── mobile/                   # Flutter client placeholder
-├── docs/
-│   ├── phase0_architecture.md
-│   └── phase1_project_plan.md   # this file
+├── apps/mobile/             # React Native / Expo mobile client
+├── services/backend/        # Fastify / SSE TypeScript backend
+├── docs/grocery/            # grocery architecture & phase docs
 ├── .gitignore
 └── README.md
 ```
@@ -136,8 +143,8 @@ patches aren't blocked. Exact resolved versions will be visible in whatever
 ## 7. Local Development Setup
 
 ```bash
-git clone <repo-url> shopping-agent
-cd shopping-agent/backend
+git clone <repo-url> quasis-food-ordering
+cd quasis-food-ordering/backend
 
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate

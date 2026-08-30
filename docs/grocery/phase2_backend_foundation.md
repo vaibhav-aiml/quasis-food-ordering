@@ -169,7 +169,7 @@ the versioning is enforced by router mounting rather than by convention.
 ### Setup (if not already done from Phase 1)
 
 ```bash
-cd shopping-agent/backend
+cd backend
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 ```

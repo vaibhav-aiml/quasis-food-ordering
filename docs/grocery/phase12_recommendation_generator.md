@@ -123,7 +123,7 @@ same defense-in-depth pattern established in Phase 4.
 ## 6. Manual Testing & Verification
 
 ```bash
-cd shopping-agent/backend
+cd backend
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 
