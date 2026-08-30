@@ -15,7 +15,6 @@ import { CityPickerModal } from '../components/CityPickerModal';
 import { OrderHistoryModal } from '../components/OrderHistoryModal';
 import { PipelineTrace } from '../components/PipelineTrace';
 import { VoiceRecorder } from '../components/VoiceRecorder';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   approveOrder,
   getApiBaseUrl,
@@ -27,7 +26,7 @@ import {
   submitFoodIntent,
   subscribeToPipeline,
 } from '../services/api';
-import { OrderStorage, StoredOrder } from '../services/orderStorage';
+import { OrderStorage, StorageAdapter, StoredOrder } from '../services/orderStorage';
 
 export default function MainScreen() {
   const [prompt, setPrompt] = useState('Find the best-rated iced latte under 200');
@@ -70,14 +69,13 @@ export default function MainScreen() {
     refreshOrderCount();
     (async () => {
       try {
-        const savedCity = await AsyncStorage.getItem('quasis_selected_city');
+        const savedCity = await StorageAdapter.getItem('quasis_selected_city');
         if (savedCity) {
           setSelectedCity(savedCity);
         } else {
           setShowCityPicker(true);
         }
       } catch (err) {
-        console.warn('Failed to load selected city:', err);
         setShowCityPicker(true);
       }
     })();
@@ -91,9 +89,9 @@ export default function MainScreen() {
   const handleSelectCity = async (city: string) => {
     setSelectedCity(city);
     try {
-      await AsyncStorage.setItem('quasis_selected_city', city);
-    } catch (err) {
-      console.warn('Failed to persist city:', err);
+      await StorageAdapter.setItem('quasis_selected_city', city);
+    } catch {
+      // Handled gracefully
     }
     setShowCityPicker(false);
   };

@@ -40,22 +40,24 @@ export type NewOrderInput = Omit<
 const STORAGE_KEY = '@quasis_order_history_v1';
 const MAX_ORDERS = 50; // Cap storage size to prevent unbounded memory/disk growth
 
-// In-memory fallback if both AsyncStorage and localStorage are unavailable
-let memoryFallback: string | null = null;
+// Resilient key-value in-memory fallback store if native AsyncStorage or localStorage is unavailable
+const memoryStore = new Map<string, string>();
 
-const StorageAdapter = {
+export const StorageAdapter = {
   async getItem(key: string): Promise<string | null> {
     try {
       if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
         return window.localStorage.getItem(key);
       }
-      return await AsyncStorage.getItem(key);
+      const val = await AsyncStorage.getItem(key);
+      return val ?? memoryStore.get(key) ?? null;
     } catch {
-      return memoryFallback;
+      return memoryStore.get(key) ?? null;
     }
   },
 
   async setItem(key: string, value: string): Promise<void> {
+    memoryStore.set(key, value);
     try {
       if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.setItem(key, value);
@@ -63,11 +65,12 @@ const StorageAdapter = {
       }
       await AsyncStorage.setItem(key, value);
     } catch {
-      memoryFallback = value;
+      // In-memory fallback already populated
     }
   },
 
   async removeItem(key: string): Promise<void> {
+    memoryStore.delete(key);
     try {
       if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.removeItem(key);
@@ -75,7 +78,7 @@ const StorageAdapter = {
       }
       await AsyncStorage.removeItem(key);
     } catch {
-      memoryFallback = null;
+      // In-memory fallback already cleared
     }
   },
 };
