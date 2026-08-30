@@ -180,7 +180,6 @@ export const OrderStorage = {
    */
   async clearAllOrders(): Promise<void> {
     await StorageAdapter.removeItem(STORAGE_KEY);
-    memoryFallback = null;
   },
 
   /**
