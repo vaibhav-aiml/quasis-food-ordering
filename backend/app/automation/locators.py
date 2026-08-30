@@ -74,6 +74,15 @@ SWIGGY_LOCATORS: dict[str, list[dict[str, Any]]] = {
         {"resourceId": "in.swiggy.android:id/tv_item_name"},
         {"xpath": "//android.widget.TextView[contains(@resource-id, 'item_name') or contains(@resource-id, 'dish_title')]"},
     ],
+    "dish_price": [
+        {"resourceId": "in.swiggy.android:id/item_price"},
+        {"resourceId": "in.swiggy.android:id/item_final_price"},
+        {"resourceId": "in.swiggy.android:id/dish_price"},
+        {"resourceId": "in.swiggy.android:id/tv_item_price"},
+        {"textContains": "₹"},
+        {"descriptionContains": "₹"},
+        {"xpath": "//*[contains(@text, '₹') or contains(@content-desc, '₹')]"},
+    ],
     "dish_add_button": [
         {"text": "ADD"},
         {"text": "Add"},

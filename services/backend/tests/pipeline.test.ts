@@ -41,7 +41,7 @@ describe('2. SwiggySearchService', () => {
     expect(results[0].name).toBe('Third Wave Coffee');
   });
 
-  it('filters items strictly within the budget limit', async () => {
+  it('filters items strictly within the budget limit and assigns priceSource', async () => {
     const intent: FoodIntent = {
       queryItem: 'cold coffee',
       city: 'Bengaluru',
@@ -53,6 +53,34 @@ describe('2. SwiggySearchService', () => {
     const recommendation = await searchService.findBestRecommendation(intent);
     expect(recommendation).toBeDefined();
     expect(recommendation!.item.price).toBeLessThanOrEqual(190);
+    expect(recommendation!.item.priceSource).toBeDefined();
+    expect(['ai_estimate', 'catalog_seed', 'device_verified']).toContain(
+      recommendation!.item.priceSource
+    );
+  });
+
+  it('assigns catalog_seed for local catalog match and ai_estimate for dynamic search match', async () => {
+    const seedIntent: FoodIntent = {
+      queryItem: 'cappuccino',
+      city: 'Bengaluru',
+      restaurantName: 'Blue Tokai',
+      dietaryPreference: 'any',
+    };
+    const dynamicIntent: FoodIntent = {
+      queryItem: 'special dessert sundae',
+      city: 'Jaipur',
+      restaurantName: 'Random Unseeded Cafe',
+      dietaryPreference: 'any',
+    };
+
+    const seedResult = await searchService.findBestRecommendation(seedIntent);
+    const dynamicResult = await searchService.findBestRecommendation(dynamicIntent);
+
+    expect(seedResult).toBeDefined();
+    expect(seedResult!.item.priceSource).toBeDefined();
+
+    expect(dynamicResult).toBeDefined();
+    expect(dynamicResult!.item.priceSource).toBe('ai_estimate');
   });
 
   it('ensures recommendation result has address and city matching intent.city', async () => {

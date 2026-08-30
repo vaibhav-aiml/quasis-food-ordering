@@ -190,6 +190,74 @@ def search_menu_item(d: Any, item_name: str) -> bool:
     return True
 
 
+def get_dish_price(d: Any, item_name: str) -> float | None:
+    """Read the real, currently-displayed price for a dish on the Swiggy
+    menu screen. Returns None if not confidently found — callers must
+    treat None as 'unknown', never substitute a guess.
+
+    Args:
+        d: Connected uiautomator2 Device instance.
+        item_name: Dish title as shown on the Swiggy menu.
+
+    Returns:
+        The parsed price in INR (e.g. 299.0), or None if not found.
+    """
+    logger.info("Reading live dish price for: '%s'...", item_name)
+    item_locator = [
+        {"text": item_name},
+        {"textContains": item_name},
+        {"descriptionContains": item_name},
+        {"xpath": f"//*[contains(@text, '{item_name}') or contains(@content-desc, '{item_name}')]"},
+    ]
+
+    try:
+        # 1. Scroll to bring the dish into view
+        elem = scroll_to_element(d, item_locator, max_swipes=5, direction="down")
+        if elem is None:
+            logger.warning("Dish '%s' not visible on screen while reading price.", item_name)
+            return None
+
+        # 2. Look for dish_price locator
+        price_elem = find_element(d, "dish_price", timeout=2.0)
+        price_text: str | None = None
+
+        if price_elem is not None:
+            if hasattr(price_elem, "info") and isinstance(price_elem.info, dict):
+                price_text = price_elem.info.get("text") or price_elem.info.get("contentDescription")
+            elif hasattr(price_elem, "text"):
+                price_text = price_elem.text
+            elif hasattr(price_elem, "get_text"):
+                price_text = price_elem.get_text()
+
+        if not price_text:
+            logger.warning("No price element text found for '%s'.", item_name)
+            return None
+
+        # 3. Parse numeric price out of matched text
+        clean_text = price_text.replace(",", "").strip()
+
+        # Handle ranges like "₹249 - ₹349" or "₹249 to ₹349"
+        if "-" in clean_text or "to" in clean_text.lower():
+            logger.warning("Dish price is a range '%s', returning lower bound.", clean_text)
+            parts = clean_text.split("-") if "-" in clean_text else clean_text.lower().split("to")
+            lower_part = parts[0]
+            digits = "".join(c for c in lower_part if c.isdigit() or c == ".")
+            if digits:
+                return float(digits)
+
+        # Single price value like "₹ 299" or "₹299.00"
+        digits = "".join(c for c in clean_text if c.isdigit() or c == ".")
+        if digits:
+            parsed_price = float(digits)
+            logger.info("Successfully read live price for '%s': ₹%.2f", item_name, parsed_price)
+            return parsed_price
+
+        return None
+    except Exception as exc:
+        logger.warning("Failed to read price for '%s': %s", item_name, exc)
+        return None
+
+
 def add_to_cart(
     d: Any,
     item_name: str,
@@ -225,6 +293,10 @@ def add_to_cart(
     elem = scroll_to_element(d, item_locator, max_swipes=5, direction="down")
     if elem is None:
         raise ElementNotFoundError(f"Cannot add to cart: dish '{item_name}' not found on menu.")
+
+    # Read and log live price verification (read-only)
+    verified_price = get_dish_price(d, item_name)
+    logger.info("Live price verification on add_to_cart for '%s': %s", item_name, verified_price)
 
     # 2. Find and click 'ADD' button associated with the dish
     # Check for direct 'ADD' button on screen

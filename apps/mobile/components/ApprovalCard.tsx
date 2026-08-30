@@ -87,11 +87,21 @@ export const ApprovalCard: React.FC<ApprovalCardProps> = ({
               <Text style={styles.reviewCount}>({item.ratingCount.toLocaleString()})</Text>
             </View>
 
-            <View style={styles.priceTag}>
-              <Text style={styles.currency}>₹</Text>
-              <Text style={styles.priceValue}>{item.price}</Text>
+            <View style={styles.priceContainer}>
+              <View style={styles.priceTag}>
+                <Text style={styles.currency}>
+                  {item.priceSource !== 'device_verified' ? '~₹' : '₹'}
+                </Text>
+                <Text style={styles.priceValue}>{item.price}</Text>
+              </View>
             </View>
           </View>
+
+          {item.priceSource !== 'device_verified' && (
+            <Text style={styles.priceEstimateNotice}>
+              Estimated — confirm final price in Swiggy before paying.
+            </Text>
+          )}
 
           {item.description ? (
             <Text style={styles.description} numberOfLines={2}>
@@ -280,6 +290,16 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#22c55e44',
+  },
+  priceContainer: {
+    alignItems: 'flex-end',
+  },
+  priceEstimateNotice: {
+    fontSize: 11,
+    color: '#94a3b8',
+    marginBottom: 6,
+    fontStyle: 'italic',
+    textAlign: 'left',
   },
   currency: {
     color: '#4ade80',

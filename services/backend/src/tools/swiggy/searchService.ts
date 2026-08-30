@@ -597,7 +597,7 @@ Respond strictly in valid JSON matching this schema (or {"restaurant": null} if 
   "item": {
     "id": "string",
     "name": "string (exact authentic dish name, e.g. Cappuccino)",
-    "price": number (exact realistic menu price in INR),
+    "price": number (a reasonable market-rate ESTIMATE in INR for this dish — you do not have live access to Swiggy's actual current price, so make this clear in the "reason" field rather than stating it as fact),
     "rating": number (4.2 to 4.9),
     "ratingCount": number,
     "description": "string (genuine, appetizing description)",
@@ -722,6 +722,7 @@ Respond strictly in valid JSON matching this schema (or {"restaurant": null} if 
         id: itemData.id || `item_${Date.now()}`,
         name: itemName,
         price: finalPrice,
+        priceSource: 'ai_estimate',
         rating: typeof itemData.rating === 'number' ? itemData.rating : 4.7,
         ratingCount: typeof itemData.ratingCount === 'number' ? itemData.ratingCount : 3800,
         description:
@@ -741,7 +742,7 @@ Respond strictly in valid JSON matching this schema (or {"restaurant": null} if 
         matchScore: 98,
         reason:
           parsed.reason ||
-          `Found authentic ${item.name} (₹${item.price}) at ${restaurant.name} with ⭐${item.rating} rating in ${intent.city}.`,
+          `Found authentic ${item.name} (~₹${item.price} estimated) at ${restaurant.name} with ⭐${item.rating} rating in ${intent.city}.`,
       };
     } catch {
       clearTimeout(timeout);
@@ -769,6 +770,7 @@ Respond strictly in valid JSON matching this schema (or {"restaurant": null} if 
     }> = [];
 
     for (const rest of targetRestaurants) {
+      const isSeed = this.catalog.some((c) => c.id === rest.id);
       for (const item of rest.menu) {
         if (intent.maxBudget && item.price > intent.maxBudget) continue;
         if (intent.dietaryPreference === 'veg' && !item.isVeg) continue;
@@ -782,7 +784,10 @@ Respond strictly in valid JSON matching this schema (or {"restaurant": null} if 
         let score = tokenMatches * 10 + item.rating * 5 + rest.rating * 3;
         candidates.push({
           restaurant: rest,
-          item,
+          item: {
+            ...item,
+            priceSource: isSeed ? 'catalog_seed' : 'ai_estimate',
+          },
           score,
           reason: `${item.name} (₹${item.price}) from ${rest.name} (⭐${item.rating})`,
         });
@@ -816,6 +821,7 @@ Respond strictly in valid JSON matching this schema (or {"restaurant": null} if 
       id: `dyn_${Date.now()}`,
       name: this.capitalizeWords(intent.queryItem),
       price,
+      priceSource: 'ai_estimate',
       rating: 4.7,
       ratingCount: 15400,
       description: `Freshly prepared delicious ${intent.queryItem} with authentic ingredients in ${intent.city}.`,
@@ -829,7 +835,7 @@ Respond strictly in valid JSON matching this schema (or {"restaurant": null} if 
       restaurant: fallbackRestaurant,
       item: dynamicItem,
       matchScore: 90,
-      reason: `Found top-rated match: ${dynamicItem.name} (₹${dynamicItem.price}) at ${fallbackRestaurant.name}`,
+      reason: `Found top-rated match: ${dynamicItem.name} (~₹${dynamicItem.price} estimated) at ${fallbackRestaurant.name}`,
     };
   }
 

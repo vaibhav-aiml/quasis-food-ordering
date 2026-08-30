@@ -14,6 +14,7 @@ from app.automation.exceptions import (
 from app.automation.safety_guard import stop_before_payment
 from app.automation.swiggy_flows import (
     add_to_cart,
+    get_dish_price,
     launch_swiggy,
     proceed_to_checkout,
     search_menu_item,
@@ -228,3 +229,50 @@ def cancel_order(execution_id: str) -> bool:
     _EXECUTION_STORE[execution_id]["status"] = ExecutionStatus.FAILED.value
     _EXECUTION_STORE[execution_id]["result"] = "CANCELLED"
     return True
+
+
+def verify_dish_price(
+    restaurant_name: str,
+    item_name: str,
+    device_serial: str | None = None,
+    device_instance: Any = None,
+) -> dict[str, Any]:
+    """Safely verify real on-device Swiggy dish price without adding to cart or proceeding to checkout.
+
+    Args:
+        restaurant_name: Name of the restaurant to search.
+        item_name: Dish name to look up and read price for.
+        device_serial: Optional target device serial.
+        device_instance: Optional connected device instance.
+
+    Returns:
+        JSON-serializable dict: {"price": float | None, "item_name": str, "restaurant_name": str}
+    """
+    logger.info("Starting on-device price verification for '%s' at '%s'...", item_name, restaurant_name)
+    d = device_instance
+    if d is None:
+        try:
+            d = connect_device(serial=device_serial)
+        except Exception as e:
+            logger.warning("Device connection error during price check: %s", e)
+            return {"price": None, "item_name": item_name, "restaurant_name": restaurant_name, "error": str(e)}
+
+    try:
+        launch_swiggy(d)
+        search_restaurant(d, restaurant_name)
+        select_restaurant(d, restaurant_name)
+        search_menu_item(d, item_name)
+        price = get_dish_price(d, item_name)
+        return {
+            "price": price,
+            "item_name": item_name,
+            "restaurant_name": restaurant_name,
+        }
+    except Exception as exc:
+        logger.warning("Price verification flow error: %s", exc)
+        return {
+            "price": None,
+            "item_name": item_name,
+            "restaurant_name": restaurant_name,
+            "error": str(exc),
+        }

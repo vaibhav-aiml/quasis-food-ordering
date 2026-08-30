@@ -19,6 +19,7 @@ export interface MenuItem {
   id: string;
   name: string;
   price: number;
+  priceSource?: 'ai_estimate' | 'device_verified' | 'catalog_seed';
   rating: number;
   ratingCount: number;
   description: string;
