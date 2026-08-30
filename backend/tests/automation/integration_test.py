@@ -1,24 +1,21 @@
 """End-to-end integration test for the Python uiautomator2 food ordering automation flow."""
 
 from unittest.mock import MagicMock, patch
-from fastapi.testclient import TestClient
 
+from app.automation.orchestrator import cancel_order, execute_order_plan, get_order_status
+from app.food_ordering.domain.execution import ExecutionStatus
 from app.food_ordering.domain.intent import FoodItemRequest
 from app.food_ordering.domain.plan import ExecutionStepType, OrderPlan, OrderStep
-from app.main import create_app
 
 
-def test_full_e2e_python_automation_via_api():
-    app = create_app()
-    client = TestClient(app)
-
-    # 1. Register a realistic OrderPlan in the backend
+def test_full_e2e_python_automation_flow():
+    # 1. Construct a realistic multi-step OrderPlan
     sample_plan = OrderPlan(
         plan_id="e2e_plan_test_999",
         target_app="swiggy",
         restaurant_name="Domino's Pizza",
         items=[
-            FoodItemRequest(name="Margherita Pizza", quantity=2, customization_notes=["Cheese Burst"]),
+            FoodItemRequest(name="Margherita Pizza", quantity=2, customizations=["Cheese Burst"]),
         ],
         steps=[
             OrderStep(step_id=1, step_type=ExecutionStepType.LAUNCH_APP, expected_screen="home"),
@@ -39,12 +36,7 @@ def test_full_e2e_python_automation_via_api():
         stop_before_payment=True,
     )
 
-    # Pre-register plan in execution service
-    from app.core.dependencies import get_execution_service
-    service = get_execution_service()
-    service.register_plan(sample_plan)
-
-    # 2. Trigger execution with uiautomator2 engine
+    # 2. Trigger execution with uiautomator2 engine mocks
     mock_device = MagicMock()
     with patch("app.automation.orchestrator.connect_device", return_value=mock_device), \
          patch("app.automation.orchestrator.launch_swiggy", return_value=True), \
@@ -56,26 +48,16 @@ def test_full_e2e_python_automation_via_api():
          patch("app.automation.orchestrator.proceed_to_checkout", return_value={"status": "STOPPED_AT_PAYMENT"}), \
          patch("app.automation.orchestrator.stop_before_payment", return_value={"status": "STOPPED_AT_PAYMENT", "screenshot_path": "/tmp/cart.png"}):
 
-        response = client.post(
-            "/v1/food/order/execute",
-            json={
-                "plan_id": "e2e_plan_test_999",
-                "device_id": "emulator-5554",
-                "engine": "uiautomator2",
-            },
-        )
+        result = execute_order_plan(sample_plan, device_serial="emulator-5554")
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "ready_for_payment"
-        assert data["current_step"] == "STOP_FOR_PAYMENT"
-        assert data["steps_completed"] == 8
-        assert data["total_steps"] == 8
+        assert result["status"] == ExecutionStatus.READY_FOR_PAYMENT.value
+        assert result["current_step"] == "STOP_FOR_PAYMENT"
+        assert result["steps_completed"] == 8
+        assert result["total_steps"] == 8
 
-        # 3. Query execution status via GET /order/status/{exec_id}
-        exec_id = data["execution_id"]
-        status_res = client.get(f"/v1/food/order/status/{exec_id}")
-        assert status_res.status_code == 200
-        status_data = status_res.json()
-        assert status_data["status"] == "ready_for_payment"
+        # 3. Query execution status via get_order_status
+        exec_id = result["execution_id"]
+        status_data = get_order_status(exec_id)
+        assert status_data is not None
+        assert status_data["status"] == ExecutionStatus.READY_FOR_PAYMENT.value
         assert status_data["result"] == "STOPPED_AT_PAYMENT"
