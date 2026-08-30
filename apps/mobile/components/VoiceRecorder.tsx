@@ -10,9 +10,7 @@ import {
 } from 'react-native';
 import { transcribeAudio } from '../services/api';
 
-// Conditionally import audio modules on native platforms
-let ExpoAVAudio: any = null;
-let ExpoAudioModule: any = null;
+// Conditionally import expo-audio and expo-file-system on native platforms
 let AudioModule: any = null;
 let AudioRecorder: any = null;
 let RecordingPresets: any = null;
@@ -20,23 +18,12 @@ let FileSystem: any = null;
 
 if (Platform.OS !== 'web') {
   try {
-    const expoAv = require('expo-av');
-    ExpoAVAudio = expoAv.Audio;
+    const ExpoAudio = require('expo-audio');
+    AudioModule = ExpoAudio.AudioModule;
+    AudioRecorder = ExpoAudio.AudioRecorder || ExpoAudio.AudioModule?.AudioRecorder;
+    RecordingPresets = ExpoAudio.RecordingPresets;
   } catch (e) {
-    // optional fallback
-  }
-
-  // Only attempt expo-audio if expo-av is not available
-  if (!ExpoAVAudio) {
-    try {
-      const ExpoAudio = require('expo-audio');
-      ExpoAudioModule = ExpoAudio;
-      AudioModule = ExpoAudio.AudioModule;
-      AudioRecorder = ExpoAudio.AudioRecorder || ExpoAudio.AudioModule?.AudioRecorder;
-      RecordingPresets = ExpoAudio.RecordingPresets;
-    } catch (e) {
-      // optional fallback
-    }
+    console.warn('expo-audio load warning:', e);
   }
 
   try {
@@ -75,9 +62,8 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
   const audioChunksRef = useRef<Blob[]>([]);
   const mediaStreamRef = useRef<any>(null);
 
-  // Native AudioRecorder reference (either expo-av Audio.Recording or expo-audio AudioRecorder)
-  const nativeRecordingRef = useRef<any>(null);
-  const recordingEngineRef = useRef<'expo-av' | 'expo-audio' | null>(null);
+  // Native AudioRecorder reference
+  const nativeRecorderRef = useRef<any>(null);
 
   // Waveform bar animations
   const bar1 = useRef(new Animated.Value(12)).current;
@@ -242,75 +228,38 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
   };
 
   /**
-   * Starts recording on Native device (expo-av for Expo Go, or expo-audio)
+   * Starts recording on Native device using expo-audio
    */
   const startNativeRecording = async () => {
     try {
-      // 1. Primary path: expo-av (native in Expo Go on Android & iOS)
-      if (ExpoAVAudio) {
-        const permission = await ExpoAVAudio.requestPermissionsAsync();
+      if (AudioModule && typeof AudioModule.requestRecordingPermissionsAsync === 'function') {
+        const permission = await AudioModule.requestRecordingPermissionsAsync();
         if (!permission.granted) {
           Alert.alert('Permission Denied', 'Microphone permission is required for voice ordering.');
           return;
         }
-
-        await ExpoAVAudio.setAudioModeAsync({
-          allowsRecordingIOS: true,
-          playsInSilentModeIOS: true,
-        });
-
-        const recording = new ExpoAVAudio.Recording();
-        await recording.prepareToRecordAsync(ExpoAVAudio.RecordingOptionsPresets.HIGH_QUALITY);
-        await recording.startAsync();
-
-        nativeRecordingRef.current = recording;
-        recordingEngineRef.current = 'expo-av';
-        setIsRecording(true);
-        setStatusMessage('🎙️ Listening... Tap mic when done speaking');
-        return;
       }
 
-      // 2. Fallback path: expo-audio (if prebuilt with custom native modules)
-      if (ExpoAudioModule || AudioRecorder) {
-        if (ExpoAudioModule && typeof ExpoAudioModule.requestRecordingPermissionsAsync === 'function') {
-          const permission = await ExpoAudioModule.requestRecordingPermissionsAsync();
-          if (!permission.granted) {
-            Alert.alert('Permission Denied', 'Microphone permission is required for voice ordering.');
-            return;
-          }
-        } else if (AudioModule && typeof AudioModule.requestRecordingPermissionsAsync === 'function') {
-          const permission = await AudioModule.requestRecordingPermissionsAsync();
-          if (!permission.granted) {
-            Alert.alert('Permission Denied', 'Microphone permission is required for voice ordering.');
-            return;
-          }
-        }
+      const preset = RecordingPresets?.HIGH_QUALITY || {};
+      const RecorderClass = AudioRecorder || AudioModule?.AudioRecorder;
+      if (!RecorderClass) {
+        throw new Error('AudioRecorder native class is not available.');
+      }
+      const recorder = new RecorderClass(preset);
+      nativeRecorderRef.current = recorder;
 
-        const preset = RecordingPresets?.HIGH_QUALITY || {};
-        const RecorderClass = AudioRecorder || AudioModule?.AudioRecorder;
-        if (!RecorderClass) {
-          throw new Error('AudioRecorder native class is not available.');
-        }
-        const recorder = new RecorderClass(preset);
-        nativeRecordingRef.current = recorder;
-        recordingEngineRef.current = 'expo-audio';
-
-        if (typeof recorder.prepareToRecordAsync === 'function') {
-          await recorder.prepareToRecordAsync();
-        }
-
-        if (typeof recorder.record === 'function') {
-          recorder.record();
-        } else if (typeof recorder.recordAsync === 'function') {
-          await recorder.recordAsync();
-        }
-
-        setIsRecording(true);
-        setStatusMessage('🎙️ Listening... Tap mic when done speaking');
-        return;
+      if (typeof recorder.prepareToRecordAsync === 'function') {
+        await recorder.prepareToRecordAsync();
       }
 
-      throw new Error('No audio recording module available on this device.');
+      if (typeof recorder.record === 'function') {
+        recorder.record();
+      } else if (typeof recorder.recordAsync === 'function') {
+        await recorder.recordAsync();
+      }
+
+      setIsRecording(true);
+      setStatusMessage('🎙️ Listening... Tap mic when done speaking');
     } catch (err: any) {
       console.warn('Native recording start error:', err);
       Alert.alert(
@@ -325,9 +274,8 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
    * Stops recording on Native device and sends audio to Groq Whisper
    */
   const stopNativeRecording = async () => {
-    const recording = nativeRecordingRef.current;
-    const engine = recordingEngineRef.current;
-    if (!recording) {
+    const recorder = nativeRecorderRef.current;
+    if (!recorder) {
       setIsRecording(false);
       return;
     }
@@ -337,24 +285,13 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
       setIsTranscribing(true);
       setStatusMessage('⚡ Transcribing with Groq Whisper (large-v3)...');
 
-      let uri: string | null = null;
-
-      if (engine === 'expo-av') {
-        await recording.stopAndUnloadAsync();
-        uri = recording.getURI();
-        if (ExpoAVAudio) {
-          await ExpoAVAudio.setAudioModeAsync({
-            allowsRecordingIOS: false,
-          }).catch(() => {});
-        }
-      } else {
-        if (typeof recording.stop === 'function') {
-          await recording.stop();
-        } else if (typeof recording.stopAsync === 'function') {
-          await recording.stopAsync();
-        }
-        uri = recording.uri;
+      if (typeof recorder.stop === 'function') {
+        await recorder.stop();
+      } else if (typeof recorder.stopAsync === 'function') {
+        await recorder.stopAsync();
       }
+
+      const uri = recorder.uri;
 
       if (!uri) {
         throw new Error('No recorded audio file URI found.');
@@ -387,8 +324,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
       console.warn('Native recording stop error:', err);
       setStatusMessage('⚠️ Whisper transcription failed. Try again or tap preset.');
     } finally {
-      nativeRecordingRef.current = null;
-      recordingEngineRef.current = null;
+      nativeRecorderRef.current = null;
     }
   };
 

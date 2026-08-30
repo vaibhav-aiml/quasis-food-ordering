@@ -43,13 +43,20 @@ const MAX_ORDERS = 50; // Cap storage size to prevent unbounded memory/disk grow
 // Resilient key-value in-memory fallback store if native AsyncStorage or localStorage is unavailable
 const memoryStore = new Map<string, string>();
 
+const withTimeout = <T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+};
+
 export const StorageAdapter = {
   async getItem(key: string): Promise<string | null> {
     try {
       if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
         return window.localStorage.getItem(key);
       }
-      const val = await AsyncStorage.getItem(key);
+      const val = await withTimeout(AsyncStorage.getItem(key), 500, null);
       return val ?? memoryStore.get(key) ?? null;
     } catch {
       return memoryStore.get(key) ?? null;
@@ -63,7 +70,7 @@ export const StorageAdapter = {
         window.localStorage.setItem(key, value);
         return;
       }
-      await AsyncStorage.setItem(key, value);
+      await withTimeout(AsyncStorage.setItem(key, value), 500, undefined);
     } catch {
       // In-memory fallback already populated
     }
@@ -76,7 +83,7 @@ export const StorageAdapter = {
         window.localStorage.removeItem(key);
         return;
       }
-      await AsyncStorage.removeItem(key);
+      await withTimeout(AsyncStorage.removeItem(key), 500, undefined);
     } catch {
       // In-memory fallback already cleared
     }
