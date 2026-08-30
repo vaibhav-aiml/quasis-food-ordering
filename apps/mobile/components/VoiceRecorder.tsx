@@ -11,6 +11,7 @@ import {
 import { transcribeAudio } from '../services/api';
 
 // Conditionally import expo-audio and expo-file-system on native platforms
+let ExpoAudioModule: any = null;
 let AudioModule: any = null;
 let AudioRecorder: any = null;
 let RecordingPresets: any = null;
@@ -19,8 +20,9 @@ let FileSystem: any = null;
 if (Platform.OS !== 'web') {
   try {
     const ExpoAudio = require('expo-audio');
+    ExpoAudioModule = ExpoAudio;
     AudioModule = ExpoAudio.AudioModule;
-    AudioRecorder = ExpoAudio.AudioRecorder;
+    AudioRecorder = ExpoAudio.AudioRecorder || ExpoAudio.AudioModule?.AudioRecorder;
     RecordingPresets = ExpoAudio.RecordingPresets;
   } catch (e) {
     console.warn('expo-audio load warning:', e);
@@ -232,7 +234,13 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
    */
   const startNativeRecording = async () => {
     try {
-      if (AudioModule && AudioModule.requestRecordingPermissionsAsync) {
+      if (ExpoAudioModule && typeof ExpoAudioModule.requestRecordingPermissionsAsync === 'function') {
+        const permission = await ExpoAudioModule.requestRecordingPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('Permission Denied', 'Microphone permission is required for voice ordering.');
+          return;
+        }
+      } else if (AudioModule && typeof AudioModule.requestRecordingPermissionsAsync === 'function') {
         const permission = await AudioModule.requestRecordingPermissionsAsync();
         if (!permission.granted) {
           Alert.alert('Permission Denied', 'Microphone permission is required for voice ordering.');
@@ -241,10 +249,23 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
       }
 
       const preset = RecordingPresets?.HIGH_QUALITY || {};
-      const recorder = new AudioRecorder(preset);
+      const RecorderClass = AudioRecorder || AudioModule?.AudioRecorder;
+      if (!RecorderClass) {
+        throw new Error('AudioRecorder native class is not available.');
+      }
+      const recorder = new RecorderClass(preset);
       nativeRecorderRef.current = recorder;
 
-      await recorder.recordAsync();
+      if (typeof recorder.prepareToRecordAsync === 'function') {
+        await recorder.prepareToRecordAsync();
+      }
+
+      if (typeof recorder.record === 'function') {
+        recorder.record();
+      } else if (typeof recorder.recordAsync === 'function') {
+        await recorder.recordAsync();
+      }
+
       setIsRecording(true);
       setStatusMessage('🎙️ Listening... Tap mic when done speaking');
     } catch (err: any) {
@@ -273,7 +294,12 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
       setIsTranscribing(true);
       setStatusMessage('⚡ Transcribing with Groq Whisper (large-v3)...');
 
-      await recorder.stopAsync();
+      if (typeof recorder.stop === 'function') {
+        await recorder.stop();
+      } else if (typeof recorder.stopAsync === 'function') {
+        await recorder.stopAsync();
+      }
+
       const uri = recorder.uri;
 
       if (!uri) {
