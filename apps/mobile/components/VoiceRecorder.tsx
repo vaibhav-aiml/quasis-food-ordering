@@ -10,28 +10,8 @@ import {
 } from 'react-native';
 import { transcribeAudio } from '../services/api';
 
-// Conditionally import expo-audio and expo-file-system on native platforms
-let AudioModule: any = null;
-let AudioRecorder: any = null;
-let RecordingPresets: any = null;
-let FileSystem: any = null;
-
-if (Platform.OS !== 'web') {
-  try {
-    const ExpoAudio = require('expo-audio');
-    AudioModule = ExpoAudio.AudioModule;
-    AudioRecorder = ExpoAudio.AudioRecorder || ExpoAudio.AudioModule?.AudioRecorder;
-    RecordingPresets = ExpoAudio.RecordingPresets;
-  } catch (e) {
-    console.warn('expo-audio load warning:', e);
-  }
-
-  try {
-    FileSystem = require('expo-file-system');
-  } catch (e) {
-    console.warn('expo-file-system load warning:', e);
-  }
-}
+// Native recording modules are resolved lazily at runtime inside recording handlers
+// to prevent any top-level module evaluation crashes in Expo Go or web browsers.
 
 interface VoiceRecorderProps {
   onTranscriptReady: (transcript: string) => void;
@@ -228,10 +208,30 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
   };
 
   /**
-   * Starts recording on Native device using expo-audio
+   * Starts recording on Native device using expo-audio (or fallback)
    */
   const startNativeRecording = async () => {
     try {
+      let ExpoAudio: any = null;
+      try {
+        ExpoAudio = require('expo-audio');
+      } catch (err: any) {
+        console.warn('expo-audio not loaded:', err);
+      }
+
+      const AudioModule = ExpoAudio?.AudioModule;
+      const RecorderClass = ExpoAudio?.AudioRecorder || AudioModule?.AudioRecorder;
+      const presets = ExpoAudio?.RecordingPresets || {};
+
+      if (!RecorderClass) {
+        Alert.alert(
+          'Microphone Recording',
+          'Voice recording with expo-audio is active in standalone/custom dev builds. On Expo Go, please tap any food preset button below or type your order into the search box!'
+        );
+        setStatusMessage('💡 Tap any preset food chip below or type above!');
+        return;
+      }
+
       if (AudioModule && typeof AudioModule.requestRecordingPermissionsAsync === 'function') {
         const permission = await AudioModule.requestRecordingPermissionsAsync();
         if (!permission.granted) {
@@ -240,12 +240,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
         }
       }
 
-      const preset = RecordingPresets?.HIGH_QUALITY || {};
-      const RecorderClass = AudioRecorder || AudioModule?.AudioRecorder;
-      if (!RecorderClass) {
-        throw new Error('AudioRecorder native class is not available.');
-      }
-      const recorder = new RecorderClass(preset);
+      const recorder = new RecorderClass(presets.HIGH_QUALITY || {});
       nativeRecorderRef.current = recorder;
 
       if (typeof recorder.prepareToRecordAsync === 'function') {
@@ -296,6 +291,11 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
       if (!uri) {
         throw new Error('No recorded audio file URI found.');
       }
+
+      let FileSystem: any = null;
+      try {
+        FileSystem = require('expo-file-system');
+      } catch {}
 
       // Read file as base64 using FileSystem
       let base64Audio = '';
