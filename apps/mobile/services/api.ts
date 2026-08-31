@@ -1,8 +1,5 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import { logBoot } from './bootLogger';
-
-logBoot('api:module evaluated');
 
 // Auto-detect computer's Wi-Fi IP address from Expo bundler hostUri
 const getDevServerHost = () => {
